@@ -1,0 +1,37 @@
+---
+title: "Sources"
+description: >
+  Sources where Replicator can read events from.
+sidebar:
+  order: 0
+---
+import { Badge } from '@astrojs/starlight/components';
+
+A source is a where Replicate reads events that are replicated to a [sink](../sinks).
+Replicator supports the following sources:
+
+## KurrentDB
+
+When replicating events from EventStoreDB v20+ or KurrentDB, use the KurrentDB source.
+
+You need to specify two configurations options for it:
+
+- `replicator.reader.protocol` - set to `grpc`
+- `replicator.reader.connectionString` - use the source cluster [connection string](https://docs.kurrent.io/clients/grpc/getting-started.html#connection-string), which you'd use for the regular client.
+
+For example, for a Kurrent Cloud cluster the connection string would look like:
+
+`esdb+discover://<username>:<password>@<cluster_id>.mesdb.eventstore.cloud`.
+
+Using gRPC gives you more predictable write operation time. For example, on a C4-size instance in Google Cloud Platform, one write would take 4-5 ms, and this number allows you to calculate the replication process throughput, as it doesn't change much when the database size grows.
+
+## EventStoreDB TCP <Badge text="Legacy" variant="note" />
+
+The TCP source should only be used when migrating from an older version cluster, for example Event Store v5 or earlier.
+
+For the TCP sink, you need to specify two configurations options for it:
+
+- `replicator.reader.protocol` - set to `tcp`
+- `replicator.reader.connectionString` - use the target cluster connection string, which you'd use for the TCP client.
+
+Check the connection string format and options in the [TCP client documentation](https://docs.kurrent.io/clients/tcp/dotnet/21.2/connecting.html#connection-string).

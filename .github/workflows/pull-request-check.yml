@@ -4,7 +4,9 @@ on:
     paths-ignore:
       - "test/**"
       - "example/**"
+      - "docs/**"
       - "**.md"
+      - "**.mdx"
       - ".github/**"
       - ".gitignore"
       - ".gitattributes"

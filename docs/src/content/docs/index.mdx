@@ -1,0 +1,38 @@
+---
+title: Kurrent Replicator
+description: Get started building your docs site with Starlight.
+template: splash
+hero:
+  tagline: |
+    Migrate KurrentDB on-prem to Kurrent Cloud by replicating events.
+    Keep your data safe by replicating events to a backup cluster.
+    One-time or continuous replication, filtering events, schema and data transformations.
+  image:
+    file: ../../assets/replicator1.png
+  actions:
+    - text: Overview
+      link: /intro/overview/
+      icon: right-arrow
+    - text: Read the Starlight docs
+      link: https://starlight.astro.build
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid stagger>
+	<Card title="Multi-protocol" icon="random">
+        Read and write to KurrentDB and EventStoreDB v5 and v20+, using legacy TCP or the latest client protocol.
+        Both secure and unsecure connections are supported.
+	</Card>
+	<Card title="Filter" icon="seti:pipeline">
+        Filter out obsolete and deleted events with scavenge, stream name, and event type filter. You can even use transformations for advanced filtering!
+	</Card>
+	<Card title="Transtorm" icon="translate">
+        Upgrade your event schema, remove or add fields, change values, enrich events with information from external sources.
+	</Card>
+	<Card title="Easy deployment" icon="seti:docker">
+		Deploy Replicator as a Docker container, or use Helm chart to deploy it on Kubernetes.
+	</Card>
+</CardGrid>

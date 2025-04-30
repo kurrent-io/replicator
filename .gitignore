@@ -334,8 +334,8 @@ version.txt
 **/checkpoint
 
 # Hugo Docs
-docs/public/
-docs/resources/
-docs/node_modules/
-docs/tech-doc-hugo
-docs/.DS_Store
+docs1/public/
+docs1/resources/
+docs1/node_modules/
+docs1/tech-doc-hugo
+docs1/.DS_Store

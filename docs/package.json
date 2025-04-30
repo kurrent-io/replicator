@@ -1,24 +1,21 @@
 {
-  "name": "tech-doc-hugo",
+  "name": "docs",
+  "type": "module",
   "version": "0.0.1",
-  "description": "Event Store Replicator docs",
-  "main": "none.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/EventStore/replicator.git"
-  },
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/EventStore/replicator/issues"
-  },
-  "homepage": "https://github.com/EventStore/replicator#readme",
-  "devDependencies": {
-    "autoprefixer": "^10.3.7",
-    "postcss": "^8.3.11",
-    "postcss-cli": "^11.0.0"
+  "dependencies": {
+    "@astrojs/starlight": "^0.34.1",
+    "@astrojs/starlight-tailwind": "^4.0.1",
+    "@tailwindcss/vite": "^4.1.4",
+    "astro": "^5.6.1",
+    "astro-rehype-relative-markdown-links": "^0.18.1",
+    "sharp": "^0.32.5",
+    "tailwindcss": "^4.1.4"
   }
 }
