@@ -30,7 +30,7 @@ jobs:
       -
         name: Restore
         run: |
-          dotnet restore -p:Configuration="Debug CI" 
+          dotnet restore"Debug CI" 
       -  
         name: Build
         run: |
