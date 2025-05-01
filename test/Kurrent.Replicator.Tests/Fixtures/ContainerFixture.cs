@@ -8,16 +8,14 @@ using Testcontainers.EventStoreDb;
 namespace Kurrent.Replicator.Tests.Fixtures;
 
 public class ContainerFixture {
-    INetwork              _network;
     EventStoreDbContainer _kurrentDbContainer;
     IContainer            _eventStoreContainer;
     public DirectoryInfo  V5DataPath { get; private set; }
 
     public async Task StartContainers() {
         V5DataPath           = Directory.CreateTempSubdirectory();
-        _network             = BuildNetwork();
-        _kurrentDbContainer  = BuildV23Container(_network);
-        _eventStoreContainer = BuildV5Container(_network, V5DataPath);
+        _kurrentDbContainer  = BuildV23Container();
+        _eventStoreContainer = BuildV5Container(V5DataPath);
 
         await _kurrentDbContainer.StartAsync();
         await _eventStoreContainer.StartAsync();
@@ -28,8 +26,6 @@ public class ContainerFixture {
         await Task.WhenAll(_kurrentDbContainer.StopAsync(), _eventStoreContainer.StopAsync());
         await _eventStoreContainer.DisposeAsync();
         await _kurrentDbContainer.DisposeAsync();
-        await _network.DeleteAsync();
-        await _network.DisposeAsync();
     }
 
     public IEventStoreConnection GetV5Client() {
@@ -48,8 +44,7 @@ public class ContainerFixture {
 
     static INetwork BuildNetwork() => new NetworkBuilder().WithName("replicator").Build();
 
-    static EventStoreDbContainer BuildV23Container(INetwork network) => new EventStoreDbBuilder()
-        .WithNetwork(network)
+    static EventStoreDbContainer BuildV23Container() => new EventStoreDbBuilder()
         .WithName("target")
         .WithEnvironment("EVENTSTORE_RUN_PROJECTIONS", "None")
         .WithEnvironment("EVENTSTORE_START_STANDARD_PROJECTIONS", "false")
@@ -57,8 +52,7 @@ public class ContainerFixture {
         .WithEnvironment("EVENTSTORE_ENABLE_ATOM_PUB_OVER_HTTP", bool.TrueString)
         .Build();
 
-    static IContainer BuildV5Container(INetwork network, DirectoryInfo data) => new ContainerBuilder()
-        .WithNetwork(network)
+    static IContainer BuildV5Container(DirectoryInfo data) => new ContainerBuilder()
         .WithName("source")
         .WithImage("eventstore/eventstore:5.0.11-bionic")
         .WithEnvironment("EVENTSTORE_CLUSTER_SIZE", "1")
