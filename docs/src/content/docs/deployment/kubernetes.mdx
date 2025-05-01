@@ -26,8 +26,8 @@ If you don't have Helm, following their [installation guide](https://helm.sh/doc
 Add the Replicator repository:
 
 ```bash
-$ helm repo add es-replicator https://kurrent-io.github.io/replicator
-$ helm repo update
+helm repo add kurrent-replicator https://kurrent-io.github.io/replicator
+helm repo update
 ```
 
 ### Provide configuration
@@ -114,10 +114,10 @@ Then append the following option to your `helm install` command:
 When you have the `values.yml` file complete, deploy the release using Helm. Remember to set the current `kubectl` context to the cluster where you are deploying to.
 
 ```bash
-helm install es-replicator \
-  es-replicator/es-replicator \
+helm install kurrent-replicator \
+  kurrent-replicator/replicator \
   --values values.yml \
-  --namespace es-replicator
+  --namespace kurrent-replicator
 ```
 
 You can choose another namespace, the namespace must exist before doing a deployment.
