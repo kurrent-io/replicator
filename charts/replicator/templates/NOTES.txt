@@ -1,4 +1,4 @@
-The Event Store Replicator has been deployed. It might take some time before the pod starts.
+The Kurrent Replicator has been deployed. It might take some time before the pod starts.
 
 Open the Replicator UI using port forwarding.
 
