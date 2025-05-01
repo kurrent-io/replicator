@@ -1,10 +1,8 @@
 name: Replicator / Publish Helm Chart
 on:
   push:
-    paths:
-      - 'charts/**'
-    branches:
-      - master
+    tags:
+      - '*.*.*'
 
 jobs:
   helm:
