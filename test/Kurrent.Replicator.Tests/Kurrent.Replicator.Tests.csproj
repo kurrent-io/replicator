@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
+        <RepoRoot>$([System.IO.Directory]::GetParent($(MSBuildThisFileDirectory)).Parent.FullName)</RepoRoot>
         <TargetFramework>net9.0</TargetFramework>
         <LangVersion>latest</LangVersion>
         <IsPackable>false</IsPackable>
