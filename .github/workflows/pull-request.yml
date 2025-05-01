@@ -34,11 +34,11 @@ jobs:
       -  
         name: Build
         run: |
-          dotnet build -c "Debug CI" -f --no-restore
+          dotnet build -c "Debug" -f --no-restore
       -  
         name: Run tests
         run: |
-          dotnet test -c "Debug CI" --no-build
+          dotnet test -c "Debug" --no-build
       -  
         name: Upload Test Results
         if: always()
