@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <ItemGroup>
-        <PackageReference Include="MongoDB.Driver" Version="2.23.1" />
+        <PackageReference Include="MongoDB.Driver" Version="3.3.0" />
     </ItemGroup>
     <ItemGroup>
         <ProjectReference Include="..\Kurrent.Replicator.Shared\Kurrent.Replicator.Shared.csproj" />
