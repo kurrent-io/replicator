@@ -1,6 +1,5 @@
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
-using DotNet.Testcontainers.Networks;
 using EventStore.Client;
 using EventStore.ClientAPI;
 using Testcontainers.EventStoreDb;
@@ -42,12 +41,10 @@ public class ContainerFixture {
         return new(settings);
     }
 
-    static INetwork BuildNetwork() => new NetworkBuilder().WithName("replicator").Build();
-
     static EventStoreDbContainer BuildV23Container() => new EventStoreDbBuilder()
+        .WithImage("eventstore/eventstore:24.10")
         .WithEnvironment("EVENTSTORE_RUN_PROJECTIONS", "None")
         .WithEnvironment("EVENTSTORE_START_STANDARD_PROJECTIONS", "false")
-        .WithImage("eventstore/eventstore:24.10")
         .WithEnvironment("EVENTSTORE_ENABLE_ATOM_PUB_OVER_HTTP", bool.TrueString)
         .Build();
 
@@ -59,9 +56,7 @@ public class ContainerFixture {
         .WithEnvironment("EVENTSTORE_EXT_HTTP_PORT", "2113")
         .WithBindMount(data.FullName, "/var/lib/eventstore")
         .WithExposedPort(2113)
-        .WithPortBinding(2113, 2113)
         .WithExposedPort(1113)
-        .WithPortBinding(1113, 1113)
         .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(1113))
         .Build();
 
