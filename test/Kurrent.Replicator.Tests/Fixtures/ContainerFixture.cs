@@ -28,6 +28,7 @@ public class ContainerFixture {
         await Task.WhenAll(_kurrentDbContainer.StopAsync(), _eventStoreContainer.StopAsync());
         await _eventStoreContainer.DisposeAsync();
         await _kurrentDbContainer.DisposeAsync();
+        await _network.DeleteAsync();
         await _network.DisposeAsync();
     }
 
