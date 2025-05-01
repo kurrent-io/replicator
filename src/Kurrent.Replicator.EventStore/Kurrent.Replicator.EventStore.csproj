@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <ItemGroup>
+        <PackageReference Include="EventStore.Client" Version="22.0.0"/>
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.0"/>
+        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.0"/>
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\Kurrent.Replicator.Shared\Kurrent.Replicator.Shared.csproj"/>
+    </ItemGroup>
+    <ItemGroup>
+        <Using Include="EventStore.ClientAPI"/>
+        <Using Include="Kurrent.Replicator.Shared"/>
+    </ItemGroup>
+</Project>

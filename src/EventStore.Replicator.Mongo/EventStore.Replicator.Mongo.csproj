@@ -1,9 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-    <ItemGroup>
-        <PackageReference Include="MongoDB.Driver" Version="2.23.1" />
-        <PackageReference Update="JetBrains.Annotations" Version="2023.3.0" />
-    </ItemGroup>
-    <ItemGroup>
-        <ProjectReference Include="..\EventStore.Replicator.Shared\EventStore.Replicator.Shared.csproj" />
-    </ItemGroup>
-</Project>

@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <ItemGroup>
+      <ProjectReference Include="..\Kurrent.Replicator.Shared\Kurrent.Replicator.Shared.csproj" />
+    </ItemGroup>
+</Project>

@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/test/">
+    <Project Path="test\Kurrent.Replicator.Tests\Kurrent.Replicator.Tests.csproj" />
+  </Folder>
+  <Project Path="src\Kurrent.Replicator.EventStore\Kurrent.Replicator.EventStore.csproj" />
+  <Project Path="src\Kurrent.Replicator.Http\Kurrent.Replicator.Http.csproj" />
+  <Project Path="src\Kurrent.Replicator.Js\Kurrent.Replicator.Js.csproj" />
+  <Project Path="src\Kurrent.Replicator.Kafka\Kurrent.Replicator.Kafka.csproj" />
+  <Project Path="src\Kurrent.Replicator.KurrentDb\Kurrent.Replicator.KurrentDb.csproj" />
+  <Project Path="src\Kurrent.Replicator.Mongo\Kurrent.Replicator.Mongo.csproj" />
+  <Project Path="src\Kurrent.Replicator.Shared\Kurrent.Replicator.Shared.csproj" />
+  <Project Path="src\Kurrent.Replicator\Kurrent.Replicator.csproj" />
+  <Project Path="src\replicator\replicator.csproj" />
+</Solution>

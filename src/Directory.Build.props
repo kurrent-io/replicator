@@ -1,7 +1,7 @@
 <Project>
     <PropertyGroup>
-        <TargetFramework>net8.0</TargetFramework>
-        <LangVersion>11</LangVersion>
+        <TargetFramework>net9.0</TargetFramework>
+        <LangVersion>latest</LangVersion>
         <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
         <NoWarn>$(NoWarn);CS1591;CS0618;</NoWarn>
         <Nullable>enable</Nullable>
@@ -9,6 +9,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="JetBrains.Annotations" Version="2022.3.1" PrivateAssets="All"/>
+        <PackageReference Include="JetBrains.Annotations" Version="2024.3.0" PrivateAssets="All"/>
     </ItemGroup>
 </Project>

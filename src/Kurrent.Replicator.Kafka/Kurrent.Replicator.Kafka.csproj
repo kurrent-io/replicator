@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <ItemGroup>
+        <PackageReference Include="Confluent.Kafka" Version="2.3.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Kurrent.Replicator.Js\Kurrent.Replicator.Js.csproj" />
+        <ProjectReference Include="..\Kurrent.Replicator.Shared\Kurrent.Replicator.Shared.csproj" />
+    </ItemGroup>
+    
+    <ItemGroup>
+        <Using Include="Confluent.Kafka" />
+        <Using Include="Kurrent.Replicator.Shared" />
+    </ItemGroup>
+</Project>

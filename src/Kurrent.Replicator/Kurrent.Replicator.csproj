@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <ItemGroup>
+        <PackageReference Include="GreenPipes" Version="4.0.1" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Kurrent.Replicator.Js\Kurrent.Replicator.Js.csproj" />
+        <ProjectReference Include="..\Kurrent.Replicator.Shared\Kurrent.Replicator.Shared.csproj" />
+    </ItemGroup>
+
+</Project>
