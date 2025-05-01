@@ -41,10 +41,11 @@ public class ValuePartitionerTests {
     public async Task ShouldKeepOrderWithinPartition() {
         var             checkpointStore = new CheckpointStore();
         using var       v5Client        = _fixture.GetV5Client();
+        using var       seedV5Client    = _fixture.GetV5Client();
         await using var kdbClient       = _fixture.GetKurrentClient();
 
-        await v5Client.ConnectAsync();
-        await Timing.Measure("Seed", Seed(v5Client));
+        await seedV5Client.ConnectAsync();
+        await Timing.Measure("Seed", Seed(seedV5Client));
 
         var reader         = new TcpEventReader(v5Client, 1024);
         var writer         = new GrpcEventWriter(kdbClient);
