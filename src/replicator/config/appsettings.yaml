@@ -1,0 +1,11 @@
+replicator:
+  reader:
+    connectionString: "esdb+discover://admin:zja1cgz1jmy-qjg1VYE@cscn41rtv1lqpuo3qi9g-1.mesdb.eventstore.cloud:2113"
+    protocol: "grpc"
+    pageSize: 2048
+  sink:
+    connectionString: "esdb://localhost:2113?tls=false"
+    partitionCount: 10
+    protocol: "grpc"
+  checkpoint:
+    path: "./checkpoint"

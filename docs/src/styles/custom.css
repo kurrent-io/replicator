@@ -1,0 +1,15 @@
+:root {
+    --sl-font: 'Solina', serif;
+    --sl-color-text: var(--color-base-100);
+    --sl-color-text-accent: var(--color-plum-200);
+    --sl-color-gray-3: var(--color-base-300);
+    --sl-color-bg: #000000;
+    --sl-text-xs: 0.875rem
+}
+
+:root[data-theme='light'] {
+    --sl-color-bg: var(--color-base-50);
+    --sl-color-text: var(--color-base-900);
+    --sl-color-text-accent: var(--color-plum-500);
+    --sl-color-gray-3: var(--color-base-600);
+}

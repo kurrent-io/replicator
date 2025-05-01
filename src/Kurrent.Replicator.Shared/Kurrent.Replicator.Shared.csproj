@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <DefineConstants>LIBLOG_PUBLIC</DefineConstants>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="LibLog" Version="5.0.8" PrivateAssets="All" />
+        <PackageReference Include="Ubiquitous.Metrics" Version="0.5.0" />
+        <PackageReference Include="YamlDotNet" Version="15.1.1" />
+    </ItemGroup>
+</Project>
