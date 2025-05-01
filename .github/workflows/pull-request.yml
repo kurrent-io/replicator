@@ -34,7 +34,7 @@ jobs:
       -  
         name: Build
         run: |
-          dotnet build -c "Debug" -f --no-restore
+          dotnet build -c "Debug" --no-restore
       -  
         name: Run tests
         run: |
