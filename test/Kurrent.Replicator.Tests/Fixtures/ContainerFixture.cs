@@ -48,6 +48,9 @@ public class ContainerFixture {
         .WithEnvironment("EVENTSTORE_ENABLE_ATOM_PUB_OVER_HTTP", bool.TrueString)
         .Build();
 
+    const int TcpPort  = 1113;
+    const int HttpPort = 2113;
+    
     static IContainer BuildV5Container(DirectoryInfo data) => new ContainerBuilder()
         .WithImage("eventstore/eventstore:5.0.11-bionic")
         .WithEnvironment("EVENTSTORE_CLUSTER_SIZE", "1")
@@ -55,9 +58,11 @@ public class ContainerFixture {
         .WithEnvironment("EVENTSTORE_START_STANDARD_PROJECTIONS", "false")
         .WithEnvironment("EVENTSTORE_EXT_HTTP_PORT", "2113")
         .WithBindMount(data.FullName, "/var/lib/eventstore")
-        .WithExposedPort(2113)
-        .WithExposedPort(1113)
-        .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(1113))
+        .WithExposedPort(HttpPort)
+        .WithExposedPort(TcpPort)
+        .WithPortBinding(HttpPort, true)
+        .WithPortBinding(TcpPort, true)
+        .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(TcpPort))
         .Build();
 
     static IEventStoreConnection ConfigureEventStoreTcp(string connectionString) {
