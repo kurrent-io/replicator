@@ -16,7 +16,7 @@ RUN dotnet restore ./src/replicator -nowarn:msb3202,nu1503 -a $TARGETARCH
 
 COPY ./src/replicator/ClientApp/package.json ./src/replicator/ClientApp/
 COPY ./src/replicator/ClientApp/yarn.lock ./src/replicator/ClientApp/
-RUN cd ./src/es-replicator/ClientApp && yarn install
+RUN cd ./src/replicator/ClientApp && yarn install
 
 FROM builder AS publish
 ARG TARGETARCH
