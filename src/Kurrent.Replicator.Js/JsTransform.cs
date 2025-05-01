@@ -1,5 +1,4 @@
-﻿using Esprima;
-using Kurrent.Replicator.Shared.Contracts;
+﻿using Kurrent.Replicator.Shared.Contracts;
 using Kurrent.Replicator.Shared.Logging;
 using Jint;
 using Jint.Native;
@@ -64,8 +63,6 @@ public class JsTransform(string jsFunc) {
         }
     }
 
-    static readonly ParserOptions ParserOptions = new() { Tolerant = true };
-
     public ValueTask<BaseProposedEvent> Transform(OriginalEvent original, CancellationToken cancellationToken) {
         var parser = new JsonParser(_function.Engine);
 
@@ -97,7 +94,7 @@ public class JsTransform(string jsFunc) {
             var metaString = original.Metadata.AsUtf8String();
 
             try {
-                return metaString.Length == 0 ? null : parser.Parse(metaString, ParserOptions);
+                return metaString.Length == 0 ? null : parser.Parse(metaString);
             } catch (Exception) {
                 return null;
             }

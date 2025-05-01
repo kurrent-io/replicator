@@ -1,5 +1,6 @@
 <Project>
     <PropertyGroup>
+        <RepoRoot>$([System.IO.Directory]::GetParent($(MSBuildThisFileDirectory)).Parent.FullName)</RepoRoot>
         <TargetFramework>net9.0</TargetFramework>
         <LangVersion>latest</LangVersion>
         <GenerateAssemblyInfo>false</GenerateAssemblyInfo>

@@ -3,38 +3,52 @@ using EventStore.Client;
 using EventStore.ClientAPI;
 using Kurrent.Replicator.Prepare;
 using Kurrent.Replicator.Sink;
-using FluentAssertions;
 using Kurrent.Replicator.EventStore;
 using Kurrent.Replicator.KurrentDb;
+using Kurrent.Replicator.Tests.Fakes;
+using Kurrent.Replicator.Tests.Fixtures;
+using Kurrent.Replicator.Tests.Logging;
 using Serilog;
-using Xunit;
-using Xunit.Abstractions;
+using Assert = TUnit.Assertions.Assert;
 using EventData = EventStore.ClientAPI.EventData;
 using Position = EventStore.Client.Position;
 
 namespace Kurrent.Replicator.Tests;
 
-public class ValuePartitionerTests : IClassFixture<Fixture> {
-    readonly Fixture _fixture;
+[ClassDataSource<ContainerFixture>]
+public class ValuePartitionerTests {
+    readonly ContainerFixture _fixture;
 
-    public ValuePartitionerTests(Fixture fixture, ITestOutputHelper output) {
+    public ValuePartitionerTests(ContainerFixture fixture) {
         _fixture = fixture;
 
         _tenants = Enumerable.Range(1, TenantsCount).Select(x => $"TEN{x}").ToArray();
 
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Information()
-            .WriteTo.TestOutput(output)
+            .WriteTo.TestOutput()
             .CreateLogger()
             .ForContext<ValuePartitionerTests>();
     }
 
-    [Fact]
-    public async Task ShouldKeepOrderWithinPartition() {
-        await Timing.Measure("Seed", Seed());
+    [Before(Test)]
+    public async Task Start() => await _fixture.StartContainers();
 
-        var reader         = new TcpEventReader(_fixture.TcpClient, 1024);
-        var writer         = new GrpcEventWriter(_fixture.GrpcClient);
+    [After(Test)]
+    public async Task Stop() => await _fixture.StopContainers();
+
+    [Test]
+    public async Task ShouldKeepOrderWithinPartition() {
+        var             checkpointStore = new CheckpointStore();
+        using var       v5Client        = _fixture.GetV5Client();
+        using var       seedV5Client    = _fixture.GetV5Client();
+        await using var kdbClient       = _fixture.GetKurrentClient();
+
+        await seedV5Client.ConnectAsync();
+        await Timing.Measure("Seed", Seed(seedV5Client));
+
+        var reader         = new TcpEventReader(v5Client, 1024);
+        var writer         = new GrpcEventWriter(kdbClient);
         var prepareOptions = new PreparePipelineOptions(null, null);
         var partitioner    = await File.ReadAllTextAsync("partition.js");
         var sinkOptions    = new SinkPipeOptions(0, 100, partitioner);
@@ -48,19 +62,19 @@ public class ValuePartitionerTests : IClassFixture<Fixture> {
             sinkOptions,
             prepareOptions,
             new NoCheckpointSeeder(),
-            _fixture.CheckpointStore,
+            checkpointStore,
             new(false, false, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5)),
             CancellationToken.None
         );
         await Timing.Measure("Replication", replication);
         Log.Information("Replication complete");
 
-        var read = _fixture.GrpcClient.ReadAllAsync(Direction.Forwards, Position.Start);
+        var read = kdbClient.ReadAllAsync(Direction.Forwards, Position.Start);
 
         var events = await read.Where(evt => !evt.Event.EventType.StartsWith('$')).ToListAsync();
 
         Log.Information("Retrieved {Count} replicated events", events.Count);
-        events.Count.Should().Be(EventsCount);
+        await Assert.That(events).HasCount(EventsCount);
 
         var testEvents = events
             .Select(x => JsonSerializer.Deserialize<TestEvent>(x.Event.Data.Span))
@@ -68,7 +82,17 @@ public class ValuePartitionerTests : IClassFixture<Fixture> {
 
         foreach (var tenantGroup in testEvents) {
             Log.Information("Validating order for tenant {Tenant}", tenantGroup.Key);
-            tenantGroup.Should().BeInAscendingOrder(x => x.Sequence);
+            await Assert.That(tenantGroup).IsInOrder(new TestEventComparer());
+        }
+    }
+
+    class TestEventComparer : IComparer<TestEvent> {
+        public int Compare(TestEvent x, TestEvent y) {
+            if (ReferenceEquals(x, y)) return 0;
+            if (y is null) return 1;
+            if (x is null) return -1;
+
+            return x.Sequence.CompareTo(y.Sequence);
         }
     }
 
@@ -77,7 +101,7 @@ public class ValuePartitionerTests : IClassFixture<Fixture> {
     const int EventsCount  = 5000;
     const int TenantsCount = 10;
 
-    async Task Seed() {
+    async Task Seed(IEventStoreConnection client) {
         Log.Information("Seeding data...");
         var random = new Random();
 
@@ -87,7 +111,7 @@ public class ValuePartitionerTests : IClassFixture<Fixture> {
             var tenant = _tenants[random.Next(0, max)];
             var evt    = new TestEvent(tenant, counter);
 
-            await _fixture.TcpClient.AppendToStreamAsync(
+            await client.AppendToStreamAsync(
                 $"{tenant}-{Guid.NewGuid():N}",
                 ExpectedVersion.Any,
                 new EventData(
