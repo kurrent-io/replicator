@@ -45,7 +45,6 @@ public class ContainerFixture {
     static INetwork BuildNetwork() => new NetworkBuilder().WithName("replicator").Build();
 
     static EventStoreDbContainer BuildV23Container() => new EventStoreDbBuilder()
-        .WithName("target")
         .WithEnvironment("EVENTSTORE_RUN_PROJECTIONS", "None")
         .WithEnvironment("EVENTSTORE_START_STANDARD_PROJECTIONS", "false")
         .WithImage("eventstore/eventstore:24.10")
@@ -53,7 +52,6 @@ public class ContainerFixture {
         .Build();
 
     static IContainer BuildV5Container(DirectoryInfo data) => new ContainerBuilder()
-        .WithName("source")
         .WithImage("eventstore/eventstore:5.0.11-bionic")
         .WithEnvironment("EVENTSTORE_CLUSTER_SIZE", "1")
         .WithEnvironment("EVENTSTORE_RUN_PROJECTIONS", "None")
