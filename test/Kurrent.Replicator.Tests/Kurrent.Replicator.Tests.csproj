@@ -5,26 +5,32 @@
         <LangVersion>latest</LangVersion>
         <IsPackable>false</IsPackable>
         <ImplicitUsings>enable</ImplicitUsings>
+        <IsTestProject>true</IsTestProject>
+        <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+        <EnableMSTestRunner>true</EnableMSTestRunner>
+        <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+        <TestingPlatformCommandLineArguments>--report-trx --results-directory $(RepoRoot)/test-results/$(TargetFramework)</TestingPlatformCommandLineArguments>
+        <TestingPlatformCaptureOutput>false</TestingPlatformCaptureOutput>
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="DockerComposeFixture" Version="1.2.2" />
-        <PackageReference Include="EventStore.Client" Version="22.0.0" />
-        <PackageReference Include="EventStore.Client.Grpc.Streams" Version="23.3.8" />
-        <PackageReference Include="Serilog" Version="4.2.0" />
-        <PackageReference Include="Testcontainers.EventStoreDb" Version="4.4.0" />
-        <PackageReference Include="coverlet.collector" Version="6.0.4" PrivateAssets="All" />
-        <PackageReference Include="TUnit" Version="0.19.86" />
-        <PackageReference Include="TUnit.Assertions" Version="0.19.112" />
+        <PackageReference Include="DockerComposeFixture" Version="1.2.2"/>
+        <PackageReference Include="EventStore.Client" Version="22.0.0"/>
+        <PackageReference Include="EventStore.Client.Grpc.Streams" Version="23.3.8"/>
+        <PackageReference Include="Serilog" Version="4.2.0"/>
+        <PackageReference Include="Testcontainers.EventStoreDb" Version="4.4.0"/>
+        <PackageReference Include="coverlet.collector" Version="6.0.4" PrivateAssets="All"/>
+        <PackageReference Include="TUnit" Version="0.19.86"/>
+        <PackageReference Include="TUnit.Assertions" Version="0.19.112"/>
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\..\src\Kurrent.Replicator.KurrentDb\Kurrent.Replicator.KurrentDb.csproj" />
-        <ProjectReference Include="..\..\src\Kurrent.Replicator.EventStore\Kurrent.Replicator.EventStore.csproj" />
-        <ProjectReference Include="..\..\src\Kurrent.Replicator\Kurrent.Replicator.csproj" />
+        <ProjectReference Include="..\..\src\Kurrent.Replicator.KurrentDb\Kurrent.Replicator.KurrentDb.csproj"/>
+        <ProjectReference Include="..\..\src\Kurrent.Replicator.EventStore\Kurrent.Replicator.EventStore.csproj"/>
+        <ProjectReference Include="..\..\src\Kurrent.Replicator\Kurrent.Replicator.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
-        <None Update="partition.js" CopyToOutputDirectory="PreserveNewest" />
+        <None Update="partition.js" CopyToOutputDirectory="PreserveNewest"/>
     </ItemGroup>
 </Project>

@@ -1,0 +1,51 @@
+name: "PR Build and test"
+on:
+  workflow_dispatch:
+  pull_request:
+    paths-ignore:
+      - docs/**
+
+jobs:
+  event_file:
+    name: "Event File"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: Event File
+          path: ${{ github.event_path }}
+  build-and-test:
+    name: "Build and test"
+    runs-on: ubuntu-latest
+    steps:
+      -  
+        name: Checkout
+        uses: actions/checkout@v4
+      - 
+        name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0"
+      -
+        name: Restore
+        run: |
+          dotnet restore -p:Configuration="Debug CI" 
+      -  
+        name: Build
+        run: |
+          dotnet build -c "Debug CI" -f --no-restore
+      -  
+        name: Run tests
+        run: |
+          dotnet test -c "Debug CI" --no-build
+      -  
+        name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Test Results
+          path: |
+            test-results/**/*.xml
+            test-results/**/*.trx
+            test-results/**/*.json
