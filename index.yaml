@@ -1,0 +1,14 @@
+apiVersion: v1
+entries:
+  replicator:
+  - apiVersion: v1
+    created: "2025-05-01T18:24:28.145252475Z"
+    description: Kurrent Replicator Helm chart
+    digest: 6cda82b01e2fee11c55356e02e4cde8b608aaee7dff753d3b67e19f2569d283d
+    home: https://replicator.kurrent.io
+    icon: https://github.com/kurrent-io/EventStore/blob/db2de074fcf1d4a9b29cfa4baac560706e087386/ouro.png
+    name: replicator
+    urls:
+    - https://github.com/kurrent-io/replicator/releases/download/replicator-0.5.1/replicator-0.5.1.tgz
+    version: 0.5.1
+generated: "2025-05-01T18:24:28.145258957Z"
