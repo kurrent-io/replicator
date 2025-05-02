@@ -31,12 +31,6 @@ public class ValuePartitionerTests {
             .ForContext<ValuePartitionerTests>();
     }
 
-    [Before(Test)]
-    public async Task Start() => await _fixture.StartContainers();
-
-    [After(Test)]
-    public async Task Stop() => await _fixture.StopContainers();
-
     [Test]
     public async Task ShouldKeepOrderWithinPartition() {
         var             checkpointStore = new CheckpointStore();

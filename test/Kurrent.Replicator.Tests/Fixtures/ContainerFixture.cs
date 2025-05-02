@@ -3,15 +3,16 @@ using DotNet.Testcontainers.Containers;
 using EventStore.Client;
 using EventStore.ClientAPI;
 using Testcontainers.EventStoreDb;
+using TUnit.Core.Interfaces;
 
 namespace Kurrent.Replicator.Tests.Fixtures;
 
-public class ContainerFixture {
+public class ContainerFixture : IAsyncInitializer, IAsyncDisposable {
     EventStoreDbContainer _kurrentDbContainer;
     IContainer            _eventStoreContainer;
     public DirectoryInfo  V5DataPath { get; private set; }
 
-    public async Task StartContainers() {
+    public async Task InitializeAsync() {
         V5DataPath           = Directory.CreateTempSubdirectory();
         _kurrentDbContainer  = BuildV23Container();
         _eventStoreContainer = BuildV5Container(V5DataPath);
@@ -21,7 +22,7 @@ public class ContainerFixture {
         await Task.Delay(TimeSpan.FromSeconds(2)); // give it some time to spin up
     }
 
-    public async Task StopContainers() {
+    public async ValueTask DisposeAsync() {
         await Task.WhenAll(_kurrentDbContainer.StopAsync(), _eventStoreContainer.StopAsync());
         await _eventStoreContainer.DisposeAsync();
         await _kurrentDbContainer.DisposeAsync();

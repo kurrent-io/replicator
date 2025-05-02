@@ -29,12 +29,6 @@ public class ChaserCheckpointSeedingTests {
             .ForContext<ChaserCheckpointSeedingTests>();
     }
 
-    [Before(Test)]
-    public async Task Start() => await _fixture.StartContainers();
-
-    [After(Test)]
-    public async Task Stop() => await _fixture.StopContainers();
-
     [Test]
     public async Task Verify() {
         var v5DataPath = _fixture.V5DataPath;
