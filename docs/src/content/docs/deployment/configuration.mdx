@@ -17,20 +17,20 @@ Available configuration options are:
 
 | Option                            | Description                                                                                                                                                           |
 |:----------------------------------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `reader.connectionString`         | Connection string for the [source](../../features/readers) cluster or instance                                                                                        |
+| `reader.connectionString`         | Connection string for the [source](../../features/readers/) cluster or instance                                                                                       |
 | `reader.protocol`                 | Reader protocol (`tcp` or `grpc`)                                                                                                                                     |
 | `reader.pageSize`                 | Reader page size (only applicable for TCP protocol                                                                                                                    |
-| `sink.connectionString`           | Connection string for the [target](../../features/sinks) cluster or instance                                                                                          |
+| `sink.connectionString`           | Connection string for the [target](../../features/sinks/) cluster or instance                                                                                         |
 | `sink.protocol`                   | Writer protocol (`tcp` or `grpc`)                                                                                                                                     |
-| `sink.partitionCount`             | Number of [partitioned](../../features/writers) concurrent writers                                                                                                    |
-| `sink.partitioner`                | Custom JavaScript [partitioner](../../features/writers)                                                                                                               |
+| `sink.partitionCount`             | Number of [partitioned](../../features/writers/) concurrent writers                                                                                                   |
+| `sink.partitioner`                | Custom JavaScript [partitioner](../../features/writers/)                                                                                                              |
 | `sink.bufferSize`                 | Size of the sink buffer, `1000` events by default                                                                                                                     |
-| `scavenge`                        | Enable real-time [scavenge](../../features/scavenge)                                                                                                                  |
+| `scavenge`                        | Enable real-time [scavenge](../../features/scavenge/)                                                                                                                 |
 | `runContinuously`                 | Set to `false` if you want Replicator to stop when it reaches the end of `$all` stream. Default is `true`, so the replication continues until you stop it explicitly. |
-| `filters`                         | Add one or more of provided [filters](../../features/filters)                                                                                                         |
-| `transform`                       | Configure the [event transformation](../../features/transforms)                                                                                                       |
+| `filters`                         | Add one or more of provided [filters](../../features/filters/)                                                                                                        |
+| `transform`                       | Configure the [event transformation](../../features/transforms/)                                                                                                      |
 | `transform.bufferSize`            | Size of the prepare buffer (filtering and transformations), `1000` events by default                                                                                  |
-| `checkpoint.type`                 | Type of [checkpoint](../../features/checkpoints) store (`file` or `mongo`), `file` by default                                                                         |
+| `checkpoint.type`                 | Type of [checkpoint](../../features/checkpoints/) store (`file` or `mongo`), `file` by default                                                                        |
 | `checkpoint.path`                 | The file path or connection string, `./checkpoint` by default                                                                                                         |
 | `checkpoint.checkpointAfter`      | The number of events that must be replicated before a checkpoint is stored, `1000` events by default                                                                  |
 | `checkpoint.database`             | The name of the Mongo database, `replicator` by default                                                                                                               |

@@ -50,16 +50,16 @@ You can only have one sink per running Replicator instance, but it might have mu
 
 A running Replicator instance progresses linearly over a given stream of events, so it knows at any time, which events were already processed. As the process might be shut down for different reasons, it needs to maintain the last processed event position, so in case of restart, Replicator will start from there, and not from the very beginning. This way, you don't get duplicated events in the sink, and you can be sure that the replication process will eventually be completed.
 
-The location of the last processed event in the source is known as _checkpoint_. Replicator supports storing the checkpoint in [different stores](../../features/checkpoints). If you want to run the replication again, from the same source, using the same Replicator instance, you need to delete the checkpoint file.
+The location of the last processed event in the source is known as _checkpoint_. Replicator supports storing the checkpoint in [different stores](../../features/checkpoints/). If you want to run the replication again, from the same source, using the same Replicator instance, you need to delete the checkpoint file.
 
 ## Filters
 
-As you might want to ignore some events during replication, Replicator supports different [filters](../../features/filters). Filters allow you to cover cases like preventing some obsolete events from being replicated, or splitting one source to two targets. In the latter case, you can run two Replicator instances with different filters, so events will be distributed to different sinks.
+As you might want to ignore some events during replication, Replicator supports different [filters](../../features/filters/). Filters allow you to cover cases like preventing some obsolete events from being replicated, or splitting one source to two targets. In the latter case, you can run two Replicator instances with different filters, so events will be distributed to different sinks.
 
 ## Transforms
 
 After being in production for a while, most systems accumulate legacy data. You might want to remove some of it using filters, but you might also want to keep the data in a different format. Typical scenarios include evolution of event schema, missing fields, incorrect data format, oversharing (sensitive unprotected information), etc.
 
-These cases can be handler by using [transforms](../../features/transforms), which allow you to change any part of the event that comes from the source, before writing it to the sink.
+These cases can be handler by using [transforms](../../features/transforms/), which allow you to change any part of the event that comes from the source, before writing it to the sink.
 
 
