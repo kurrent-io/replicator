@@ -1,7 +1,65 @@
 @layer base, starlight, theme, components, utilities;
 
+@import "tailwindcss";
 @import '@astrojs/starlight-tailwind';
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/utilities.css' layer(utilities);
 @import "./tailwind-theme.css";
 @import "./buttons.css" layer(components);
+
+@layer components {
+    .h1 {
+        /* main text gradient */
+        @apply from-base-800 to-base-700 dark:from-base-200 dark:to-base-200/60 bg-gradient-to-br bg-clip-text text-transparent;
+        @apply mb-4 text-5xl leading-tight font-medium tracking-tight md:text-6xl md:leading-tight;
+    }
+
+    .h2 {
+        /* main text gradient */
+        @apply from-base-800 to-base-700 dark:from-base-200 dark:to-base-200/60 bg-gradient-to-br bg-clip-text text-transparent;
+        @apply mb-4 text-4xl leading-tight font-medium tracking-tight md:text-5xl md:leading-tight;
+    }
+
+    .h3 {
+        @apply text-base-900 dark:text-base-100 text-lg font-medium tracking-tight md:text-xl;
+    }
+
+    .description {
+        @apply text-base-700 dark:text-base-400;
+    }
+
+    /* styles various navbar elements like links, language switcher, dropdowns, theme toggle, etc. */
+    .nav__link--base {
+        @apply text-base-800 hover:text-base-600 dark:text-base-400 dark:hover:text-base-200 font-medium tracking-tight transition-colors;
+    }
+
+    /* likely items you may want to change for all dropdowns - language switcher, mega menu, dropdown */
+    .dropdown--base {
+        @apply border-base-200 bg-base-100 dark:border-base-800 dark:bg-base-950 absolute rounded-xl border border-solid;
+    }
+
+    /* used for various form inputs */
+    .form__label {
+        @apply text-base-800 dark:text-base-200;
+    }
+
+    .form__input {
+        @apply border-base-300 bg-base-50 text-base-700 placeholder-base-500 w-full rounded-md border px-4 py-2.5 tracking-tight transition duration-200 outline-none;
+        @apply dark:border-base-700 dark:bg-base-900 dark:text-base-300 dark:placeholder-base-500 dark:focus-visible:border-primary-500;
+        @apply focus:border-primary-500 focus-visible:border-primary-500 focus:ring-0 focus:outline-none focus-visible:outline-none;
+    }
+
+    .site-container {
+        @apply mx-auto max-w-[1400px] px-4;
+    }
+}
+
+@theme inline {
+    --radius-xs: calc(var(--radius) - 0.375rem);
+    --radius-sm: calc(var(--radius) - 0.25rem);
+    --radius-md: calc(var(--radius) - 0.125rem);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 0.25rem);
+    --radius-2xl: calc(var(--radius) + 0.5rem);
+    --radius-3xl: calc(var(--radius) + 1rem);
+}

@@ -1,0 +1,51 @@
+---
+import {Icon} from "astro-icon/components";
+import {type navLinkItem} from "../../config/types/nav";
+
+interface Props {
+    navItem: navLinkItem;
+    class?: string;
+    noIcon?: boolean;
+}
+
+const {navItem, class: className, noIcon = false} = Astro.props as Props;
+const {text, link, newTab = false, icon} = navItem;
+
+const domain = import.meta.env.SITE; // pulls from astro.config.mjs
+let actualLink: string;
+if (!link.includes(domain) && !link.startsWith("/") && !link.startsWith("#")) {
+    // it is an external link
+    actualLink = link;
+} else {
+    // internal link, so we need to add the locale to the link
+    actualLink = link;
+}
+// remove trailing slash so IDs will work
+if (actualLink.endsWith("/") && actualLink !== "/") {
+    actualLink = actualLink.slice(0, -1);
+}
+---
+
+<li>
+    <a
+            class:list={[
+                `nav__link--base relative flex h-10 w-full items-center gap-1.5 rounded-sm px-4 py-1.5 transition duration-200 ${className}`,
+                {
+                    // styling for current active page link, if desired
+
+                    "": Astro.url.pathname === actualLink,
+                },
+            ]}
+            href={actualLink}
+            target={newTab ? "_blank" : ""}
+            rel={newTab ? "noopener noreferrer" : ""}
+            aria-label={text}
+    >
+        {
+            icon && !noIcon && (
+                        <Icon name={icon} aria-hidden="true" class="mt-1 size-5 self-start md:size-4"/>
+            )
+        }
+        {text}
+    </a>
+</li>

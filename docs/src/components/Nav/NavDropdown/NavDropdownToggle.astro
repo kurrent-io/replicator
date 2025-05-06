@@ -1,0 +1,122 @@
+---
+import {Icon} from "astro-icon/components";
+import NavLink from "../NavLink.astro";
+import {type navDropdownItem} from "../../../config/types/nav";
+import {slugify} from "@js/textUtils";
+
+interface Props {
+    navItem: navDropdownItem;
+}
+
+const {navItem} = Astro.props as Props;
+---
+
+<!-- non-mobile dropdown menu -->
+<li class="nav__dropdown group relative">
+    <button
+            class="nav__dropdown-button nav__link--base flex h-10 w-full items-center gap-1 px-3 py-2 leading-tight whitespace-nowrap transition duration-200"
+            type="button"
+            id={`${slugify(navItem.text)}-dropdown-menu`}
+            aria-expanded="false"
+            aria-haspopup="true"
+            aria-controls={`${slugify(navItem.text)}-dropdown-menu-content`}
+    >
+        {navItem.text}
+        <Icon
+                name="tabler/chevron-down"
+                aria-hidden="true"
+                class="nav__dropdown-chevron size-3 shrink-0 opacity-70 transition-transform"
+        />
+    </button>
+    <div
+            id={`${slugify(navItem.text)}-dropdown-menu-content`}
+            aria-labelledby={`${slugify(navItem.text)}-dropdown-menu`}
+            data-state="closed"
+            class:list={[
+                "nav__dropdown-content absolute left-0 z-10 mt-4 transition-all duration-300",
+                "slide-in-from-bottom-2 fade-in-0 animate-in hidden will-change-transform",
+                "data-[state=closed]:fade-out-0 data-[state=closed]:animate-out",
+            ]}
+    >
+        <ul class="dropdown--base mt-4 w-[12rem] max-w-[20rem] min-w-[9rem] px-1.5 py-2">
+            {navItem.dropdown.map((dropdownItem) =>
+                    <NavLink navItem={dropdownItem} class="w-full"/>)}
+        </ul>
+    </div>
+</li>
+
+<script>
+    class NavDropdownController {
+        private navDropdown: HTMLDivElement;
+        private readonly dropdownButton: HTMLButtonElement | null;
+        private readonly dropdownChevron: HTMLElement | null;
+        private readonly dropdownContent: HTMLDivElement | null;
+        private animationDuration: number = 150;
+
+        constructor(navDropdown: HTMLDivElement) {
+            this.navDropdown = navDropdown;
+            this.dropdownButton = navDropdown.querySelector(".nav__dropdown-button");
+            this.dropdownChevron = navDropdown.querySelector(".nav__dropdown-chevron");
+            this.dropdownContent = navDropdown.querySelector(".nav__dropdown-content");
+
+            if (!this.dropdownButton || !this.dropdownContent || !this.dropdownChevron) {
+                return;
+            }
+
+            this.init();
+        }
+
+        private init() {
+            this.dropdownButton?.addEventListener("click", this.handleDropdownClick.bind(this));
+            document.addEventListener("click", this.handleOutsideClick.bind(this));
+        }
+
+        private handleDropdownClick(event: MouseEvent) {
+            if (!this.navDropdown?.classList.contains("active")) {
+                this.openDropdown();
+            } else {
+                this.closeDropdown();
+            }
+            event.preventDefault();
+            return false;
+        }
+
+        private handleOutsideClick(event: MouseEvent) {
+            if (
+                !this.navDropdown?.contains(event.target as Node) &&
+                this.navDropdown?.classList.contains("active")
+            ) {
+                this.closeDropdown();
+            }
+        }
+
+        private openDropdown() {
+            this.navDropdown.classList.add("active");
+            this.dropdownContent?.classList.remove("hidden");
+            this.dropdownButton?.setAttribute("aria-expanded", "true");
+            this.dropdownContent?.setAttribute("data-state", "open");
+            this.dropdownChevron?.classList.add("rotate-180");
+        }
+
+        private closeDropdown() {
+            this.navDropdown.classList.remove("active");
+            this.dropdownButton?.setAttribute("aria-expanded", "false");
+            this.dropdownContent?.setAttribute("data-state", "closed");
+            this.dropdownChevron?.classList.remove("rotate-180");
+            setTimeout(() => {
+                this.dropdownContent?.classList.add("hidden");
+            }, this.animationDuration - 10);
+        }
+    }
+
+    function navDropdownToggleSetup() {
+        const navDropdown = document.querySelectorAll<HTMLDivElement>(".nav__dropdown");
+        navDropdown.forEach((navDropdown) => new NavDropdownController(navDropdown));
+    }
+
+    // runs on page load
+    navDropdownToggleSetup();
+
+    // runs on view transitions navigation
+    document.addEventListener("astro:after-swap", navDropdownToggleSetup);
+</script>

@@ -1,0 +1,125 @@
+---
+import { Icon } from "astro-icon/components";
+import NavLink from "../NavLink.astro";
+
+// data
+import { type navMegaDropdownColumn, type navDropdownItem } from "../../../config/types/nav";
+
+interface Props {
+	navItem: navDropdownItem | navMegaDropdownColumn;
+}
+
+const { navItem } = Astro.props as Props;
+
+const dropdownItem: navDropdownItem = "dropdown" in navItem ? navItem : {
+	text: navItem.title,
+	dropdown: navItem.items,
+};
+---
+
+<li class="mobile-nav__dropdown group relative">
+	<button
+		class="mobile-nav__dropdown-button nav__link--base flex w-full flex-1 items-center justify-between rounded-md px-4 py-2 text-left transition duration-300"
+		type="button"
+		aria-label={`${dropdownItem.text} dropdown menu`}
+		aria-expanded="false"
+		aria-haspopup="true"
+	>
+		{dropdownItem.text}
+		<Icon
+			name="tabler/chevron-down"
+			aria-hidden="true"
+			class="mobile-nav__dropdown-chevron mb-auto size-7 translate-y-0.5 transition-transform duration-300"
+		/>
+	</button>
+
+	<div
+		class="mobile-nav__dropdown-content hidden max-h-0 overflow-hidden transition-all duration-300 ease-in-out"
+	>
+		<ul class="mb-2 transition-[height] duration-300">
+			{
+				dropdownItem.dropdown.map((dropdownItem) => (
+					// no icons for mobile dropdown. I think this looks better
+					<NavLink navItem={dropdownItem} noIcon={true} class="ml-2" />
+				))
+			}
+		</ul>
+	</div>
+</li>
+
+<script>
+	function mobileNavDropdownSetup() {
+		const dropdownMenus = document.querySelectorAll(
+			".mobile-nav__dropdown",
+		) as NodeListOf<HTMLElement>;
+		dropdownMenus.forEach((dropdownMenu) => {
+			const dropdownButton = dropdownMenu.querySelector(
+				".mobile-nav__dropdown-button",
+			) as HTMLElement;
+			const dropdownChevron = dropdownMenu.querySelector(
+				".mobile-nav__dropdown-chevron",
+			) as HTMLElement;
+			const dropdownContent = dropdownMenu.querySelector(
+				".mobile-nav__dropdown-content",
+			) as HTMLElement;
+
+			if (dropdownButton && dropdownContent && dropdownChevron) {
+				dropdownButton.addEventListener("click", (event) => {
+					if (!dropdownMenu.classList.contains("active")) {
+						// if dropdown is currently closed, so open it
+						dropdownMenu.classList.add("active");
+						dropdownButton.setAttribute("aria-expanded", "true");
+
+						// set max-height to the height of the dropdown content
+						// this makes it animate properly
+						dropdownContent.classList.remove("hidden");
+						dropdownContent.style.maxHeight = dropdownContent.scrollHeight + "px";
+						dropdownChevron.classList.add("rotate-180");
+
+						// close all other dropdowns
+						dropdownMenus.forEach((otherDropdownMenu) => {
+							if (otherDropdownMenu !== dropdownMenu) {
+								otherDropdownMenu.classList.remove("active");
+								otherDropdownMenu
+									.querySelector(".mobile-nav__dropdown-button")
+									?.setAttribute("aria-expanded", "false");
+								otherDropdownMenu
+									.querySelector(".mobile-nav__dropdown-content")
+									?.setAttribute("style", "max-height: 0px");
+								otherDropdownMenu
+									.querySelector(".mobile-nav__dropdown-chevron")
+									?.classList.remove("rotate-180");
+								setTimeout(() => {
+									otherDropdownMenu
+										.querySelector(".mobile-nav__dropdown-content")
+										?.classList.add("hidden");
+								}, 300);
+							}
+						});
+					} else {
+						// dropdown is currently open, so close it
+						dropdownMenu.classList.remove("active");
+						dropdownButton.setAttribute("aria-expanded", "false");
+
+						// set max-height to the height of the dropdown content
+						// this makes it animate properly
+						dropdownContent.style.maxHeight = "0px";
+						dropdownChevron.classList.remove("rotate-180");
+						// delay to allow close animation
+						setTimeout(() => {
+							dropdownContent.classList.add("hidden");
+						}, 300);
+					}
+					event.preventDefault();
+					return false;
+				});
+			}
+		});
+	}
+
+	// runs on initial page load
+	mobileNavDropdownSetup();
+
+	// runs on view transitions navigation
+	document.addEventListener("astro:after-swap", mobileNavDropdownSetup);
+</script>

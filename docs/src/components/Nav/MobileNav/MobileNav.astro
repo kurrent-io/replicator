@@ -1,0 +1,133 @@
+---
+import {Icon} from "astro-icon/components";
+import MobileNavDropdown from "./MobileNavDropdown.astro";
+import NavLink from "../NavLink.astro";
+import Button from "../../Button/Button.astro";
+import SiteLogo from "../../SiteLogo/SiteLogo.astro";
+import navDataJson from "@config/navData.json";
+
+const navData = navDataJson;
+---
+
+<!-- mobile nav open -->
+<mobile-nav-menu>
+    <button data-open-modal id="mobile-nav__open-btn" disabled
+            class="primary-focus relative my-auto flex h-10 w-10 items-center justify-center rounded-md">
+        <!-- hamburger icon to open menu -->
+        <Icon name="tabler/menu-2" class="absolute inline-block h-8 w-8 transition-all"
+              aria-label="open navigation menu"/>
+    </button>
+
+    <dialog
+            aria-label="mobile navigation menu"
+            id="mobile-nav__content"
+            class="whitepace-nowrap bg-base-100 text-base-900 dark:bg-base-950 dark:text-base-100 fixed inset-x-0 top-0 z-20 m-0 h-[100dvh] max-h-screen w-screen max-w-[100vw] items-center overflow-auto overflow-x-hidden overflow-y-auto px-4 pt-2 pb-4 text-lg font-normal transition-opacity duration-300"
+    >
+        <div class="dialog-frame">
+            <div class="flex items-center justify-between">
+                <SiteLogo/>
+                <!-- mobile nav close -->
+                <button
+                        data-close-modal
+                        id="mobile-nav__close-btn"
+                        class="primary-focus relative my-auto inline-flex h-10 w-10 items-center justify-center rounded-md"
+                >
+                    <!-- "X" icon to close menu -->
+                    <Icon name="tabler/x" class="absolute inline-block h-8 w-8 transition-all"
+                          aria-label="close navigation menu"/>
+                </button>
+            </div>
+
+            <!-- nav items -->
+            <nav>
+                <ul class="mt-4 flex flex-col gap-2 text-xl">
+                    {
+                        navData.map((navItem) =>
+                            "dropdown" in navItem ? (
+                                    <MobileNavDropdown navItem={navItem}/>
+                                    <hr class="border-base-300 dark:border-base-600/60 mx-4 my-1"/>
+                            ) : "megaMenuColumns" in navItem ? (
+                                    <>
+                                        {navItem.megaMenuColumns.map((navItem) => (
+                                            navItem.type === "regular" ? (
+                                                    <MobileNavDropdown navItem={navItem}/>
+                                            ) : (
+                                                    <a
+                                                            href={navItem.link}
+                                                            class="group/cta relative mx-4 block overflow-hidden rounded-lg bg-base-100 p-4 transition-all hover:bg-base-200 dark:bg-base-800 dark:hover:bg-base-700"
+                                                    >
+                                                        <!--<Image-->
+                                                        <!--    src={navItem.image}-->
+                                                        <!--    alt=""-->
+                                                        <!--    class="mb-3 h-32 w-full object-cover rounded-md"-->
+                                                        <!--/>-->
+                                                        <p class="text-base-800 dark:text-base-200 mb-3">{navItem.text}</p>
+                                                        <span class="inline-flex items-center gap-1 text-primary-600 dark:text-primary-400">
+                                                    {navItem.buttonText}
+                                                            <Icon
+                                                                    name="tabler/arrow-right"
+                                                                    class="size-4 transition-transform group-hover/cta:translate-x-1"
+                                                            />
+                                                </span>
+                                                    </a>
+                                            )
+                                        ))}
+                                        <hr class="border-base-300 dark:border-base-600/60 mx-4 my-1"/>
+                                    </>
+                            ) : (
+                                    <NavLink navItem={navItem}/>
+                                    <hr class="border-base-300 dark:border-base-600/60 mx-4 my-1"/>
+                            ),
+                        )
+                    }
+                </ul>
+            </nav>
+            <div class="mt-2 flex w-full flex-col gap-3 px-2">
+                <Button variant="outline" class="mx-2 whitespace-nowrap" href="https://console.kurrent.cloud"> Login
+                </Button>
+                <Button variant="primary" class="mx-2" href="https://console.kurrent.cloud/signup"> Sign Up</Button>
+            </div>
+        </div>
+    </dialog>
+</mobile-nav-menu>
+
+<script>
+    class MobileNavigationMenu extends HTMLElement {
+        constructor() {
+            super();
+            const openBtn = this.querySelector<HTMLButtonElement>("button[data-open-modal]")!;
+            const closeBtn = this.querySelector<HTMLButtonElement>("button[data-close-modal]")!;
+            const dialog = this.querySelector("dialog")!;
+            const dialogFrame = this.querySelector(".dialog-frame")!;
+
+            // Close the modal if a user clicks on a link or outside of the modal
+            const onClick = (event: MouseEvent) => {
+                const isLink = "href" in (event.target || {});
+                if (isLink || (document.body.contains(event.target as Node) && !dialogFrame.contains(event.target as Node))) {
+                    closeModal();
+                }
+            };
+
+            const openModal = (event?: MouseEvent) => {
+                dialog.showModal();
+                document.body.toggleAttribute("data-mobile-nav-open", true);
+                this.querySelector("input")?.focus();
+                event?.stopPropagation();
+                window.addEventListener("click", onClick);
+            };
+
+            const closeModal = () => dialog.close();
+
+            openBtn.addEventListener("click", openModal);
+            openBtn.disabled = false;
+            closeBtn.addEventListener("click", closeModal);
+
+            dialog.addEventListener("close", () => {
+                document.body.toggleAttribute("data-mobile-nav-open", false);
+                window.removeEventListener("click", onClick);
+            });
+        }
+    }
+
+    customElements.define("mobile-nav-menu", MobileNavigationMenu);
+</script>

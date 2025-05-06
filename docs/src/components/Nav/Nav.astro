@@ -1,0 +1,106 @@
+---
+// components
+import NavLink from "./NavLink.astro";
+import NavDropdownToggle from "./NavDropdown/NavDropdownToggle.astro";
+import MegaMenuDropdownToggle from "./NavDropdown/MegaMenuDropdownToggle.astro";
+import MobileNav from "./MobileNav/MobileNav.astro";
+import SiteLogo from "../SiteLogo/SiteLogo.astro";
+import Button from "../Button/Button.astro";
+
+// data
+import navDataJson from "@config/navData.json";
+const navData = navDataJson;
+---
+
+<div id="nav__container"
+     class="navbar--initial fixed top-0 py-3 left-0 z-30 flex w-full flex-col border-b transition-all duration-300 dark"
+     transition:name={`nav`}>
+    <div class="mx-auto flex w-full">
+        <div class="site-container flex h-14 w-full items-center">
+            <header class="relative flex w-full items-center gap-2">
+                <!-- home button / image -->
+                <!-- min width is set to match the width of the rigth side, so that the main links are centered -->
+                <div class="flex justify-start lg:min-w-[220px]">
+                    <SiteLogo/>
+                </div>
+
+                <!-- center desktop menu -->
+                <div class="flex flex-auto justify-center">
+                    <nav class="hidden items-center md:flex">
+                        <ul class="flex h-fit items-center px-4">
+                            {
+                                navData.map((navItem) =>
+                                    "dropdown" in navItem ? (
+                                            <NavDropdownToggle navItem={navItem}/>
+                                    ) : "megaMenuColumns" in navItem ? (
+                                            <MegaMenuDropdownToggle navItem={navItem}/>
+                                    ) : (
+                                            <NavLink navItem={navItem}/>
+                                    ),
+                                )
+                            }
+                        </ul>
+                    </nav>
+                </div>
+
+                <!-- extra items. If changing CTA buttons make sure to update MobileNav.astro as well! -->
+                <div class="flex justify-end">
+                    <Button variant="ghost" class="mr-2 hidden px-4 py-1.5 md:flex"
+                            href="https://console.kurrent.cloud"> Login
+                    </Button>
+
+                    <Button variant="primary" class="my-auto hidden px-4 py-1.5 md:flex"
+                            href="https://console.kurrent.cloud/signup"> Sign up
+                    </Button>
+                    <!--<ThemeToggle class="my-auto ml-2 hidden md:block"/>-->
+
+                    <!-- mobile nav menu, only load on small screens where it is visible -->
+                    <div class="md:hidden">
+                        <MobileNav/>
+                    </div>
+                </div>
+            </header>
+        </div>
+    </div>
+</div>
+
+<style>
+    @import "tailwindcss/theme" theme(reference);
+    @import "@styles/tailwind-theme.css" theme(reference);
+
+    .navbar--scrolled {
+        @apply border-foreground/10 bg-background/70 backdrop-blur-sm;
+    }
+
+    .navbar--initial {
+        @apply bg-base-900 border-b-transparent;
+    }
+</style>
+
+<script>
+    let navbar: HTMLElement | null;
+
+    function scrollHandler() {
+        if (navbar) {
+            if (window.scrollY > 50) {
+                // if we have scrolled down the page a bit, add a frosted-glass look to the navbar
+                navbar.classList.add("navbar--scrolled");
+                navbar.classList.remove("navbar--initial");
+            } else {
+                navbar.classList.add("navbar--initial");
+                navbar.classList.remove("navbar--scrolled");
+            }
+        }
+    }
+
+    function initNav() {
+        navbar = document.getElementById("nav__container");
+        window.addEventListener("scroll", scrollHandler, {passive: true});
+    }
+
+    // runs on initial page load
+    initNav();
+
+    // runs on view transitions navigation. Not needed if item has "transition:persist"
+    document.addEventListener("astro:after-swap", initNav);
+</script>

@@ -1,0 +1,178 @@
+---
+import {Icon} from "astro-icon/components";
+import NavLink from "../NavLink.astro";
+import {type navMegaDropdownItem} from "../../../config/types/nav";
+import {slugify} from "@js/textUtils";
+
+interface Props {
+    navItem: navMegaDropdownItem;
+}
+
+const {navItem} = Astro.props as Props;
+
+const cols = navItem.megaMenuColumns.length;
+let gridClass: string;
+let insetClass: string;
+if (cols >= 5) {
+    gridClass = "grid-cols-5";
+    insetClass = "inset-x-0";
+} else if (cols == 4) {
+    gridClass = "grid-cols-4";
+    insetClass = "inset-x-4 lg:inset-x-24";
+} else if (cols == 3) {
+    gridClass = "grid-cols-3";
+    insetClass = "inset-x-20 lg:inset-x-48";
+} else if (cols == 2) {
+    gridClass = "grid-cols-2";
+    insetClass = "inset-x-32 lg:inset-x-72";
+} else {
+    throw new Error("Mega menu dropdown must have at least 2 columns");
+}
+---
+
+<!-- non-mobile mega menu menu -->
+<li class="mega-menu__dropdown group">
+    <button
+            class="mega-menu__dropdown-button nav__link--base flex h-10 w-full items-center gap-1 px-4 py-2 leading-tight whitespace-nowrap transition duration-200"
+            type="button"
+            id={`${slugify(navItem.text)}-mega-menu`}
+            aria-expanded="false"
+            aria-haspopup="true"
+            aria-controls={`${slugify(navItem.text)}-mega-menu-content`}
+    >
+        {navItem.text}
+        <Icon
+                name="tabler/chevron-down"
+                aria-hidden="true"
+                class="mega-menu__dropdown-chevron size-6 shrink-0 opacity-90 transition-transform"
+        />
+    </button>
+    <div
+            id={`${slugify(navItem.text)}-mega-menu-content`}
+            aria-labelledby={`${slugify(navItem.text)}-mega-menu`}
+            data-state="closed"
+            class:list={[
+                "mega-menu__dropdown-content absolute top-full z-10 transition-all duration-300",
+                "slide-in-from-bottom-2 fade-in-0 animate-in hidden will-change-transform",
+                "data-[state=closed]:fade-out-0 data-[state=closed]:animate-out",
+                insetClass,
+            ]}
+    >
+        <ul
+                class:list={[
+                    "dropdown--base z-10 mt-4 grid w-full max-w-full min-w-[150px] gap-3 px-2 py-4",
+                    gridClass,
+                ]}
+        >
+            {
+                navItem.megaMenuColumns.map((col) => (
+                        <div>
+                            <p class="border-base-200 text-base-800 dark:border-base-800 dark:text-base-300 mx-4 mb-2 border-b pb-1 text-lg font-medium tracking-tight">
+                                {col.title}
+                            </p>
+                            {col.type === "regular" ? (
+                                col.items.map((navItem) => (
+                                        <NavLink navItem={navItem} class="w-full"/>
+                                ))
+                            ) : (
+                                    <a
+                                            href={col.link}
+                                            class="group/cta relative mx-4 block overflow-hidden rounded-lg bg-base-100 p-4 transition-all hover:bg-base-200 dark:bg-base-800 dark:hover:bg-base-700"
+                                    >
+                                        <!--<Image-->
+                                        <!--	src={col.image}-->
+                                        <!--	alt=""-->
+                                        <!--	class="mb-3 h-32 w-full object-cover rounded-md"-->
+                                        <!--/>-->
+                                        <p class="text-base-800 dark:text-base-200 mb-3">{col.text}</p>
+                                        <span class="inline-flex items-center gap-1 text-primary-600 dark:text-primary-400">
+									{col.buttonText}
+                                            <Icon
+                                                    name="tabler/arrow-right"
+                                                    class="size-4 transition-transform group-hover/cta:translate-x-1"
+                                            />
+								</span>
+                                    </a>
+                            )}
+                        </div>
+                ))
+            }
+        </ul>
+    </div>
+</li>
+
+<script>
+    class MegaMenuController {
+        private megaMenu: HTMLDivElement;
+        private readonly dropdownButton: HTMLButtonElement | null;
+        private readonly dropdownChevron: HTMLElement | null;
+        private readonly dropdownContent: HTMLDivElement | null;
+        private animationDuration: number = 150;
+
+        constructor(megaMenu: HTMLDivElement) {
+            this.megaMenu = megaMenu;
+            this.dropdownButton = megaMenu.querySelector(".mega-menu__dropdown-button");
+            this.dropdownChevron = megaMenu.querySelector(".mega-menu__dropdown-chevron");
+            this.dropdownContent = megaMenu.querySelector(".mega-menu__dropdown-content");
+
+            if (!this.dropdownButton || !this.dropdownContent || !this.dropdownChevron) {
+                return;
+            }
+
+            this.init();
+        }
+
+        private init() {
+            this.dropdownButton?.addEventListener("click", this.handleDropdownClick.bind(this));
+            document.addEventListener("click", this.handleOutsideClick.bind(this));
+        }
+
+        private handleDropdownClick(event: MouseEvent) {
+            if (!this.megaMenu.classList.contains("active")) {
+                this.openDropdown();
+            } else {
+                this.closeDropdown();
+            }
+            event.preventDefault();
+            return false;
+        }
+
+        private handleOutsideClick(event: MouseEvent) {
+            if (
+                !this.megaMenu?.contains(event.target as Node) &&
+                this.megaMenu?.classList.contains("active")
+            ) {
+                this.closeDropdown();
+            }
+        }
+
+        private openDropdown() {
+            this.megaMenu.classList.add("active");
+            this.dropdownButton?.setAttribute("aria-expanded", "true");
+            this.dropdownContent?.setAttribute("data-state", "open");
+            this.dropdownContent?.classList.remove("hidden");
+            this.dropdownChevron?.classList.add("rotate-180");
+        }
+
+        private closeDropdown() {
+            this.megaMenu.classList.remove("active");
+            this.dropdownButton?.setAttribute("aria-expanded", "false");
+            this.dropdownContent?.setAttribute("data-state", "closed");
+            this.dropdownChevron?.classList.remove("rotate-180");
+            setTimeout(() => {
+                this.dropdownContent?.classList.add("hidden");
+            }, this.animationDuration - 10);
+        }
+    }
+
+    function dropdownToggleSetup() {
+        const megaMenus = document.querySelectorAll<HTMLDivElement>(".mega-menu__dropdown");
+        megaMenus.forEach((megaMenu) => new MegaMenuController(megaMenu));
+    }
+
+    // runs on page load
+    dropdownToggleSetup();
+
+    // runs on view transitions navigation
+    document.addEventListener("astro:after-swap", dropdownToggleSetup);
+</script>

@@ -1,0 +1,9 @@
+---
+import { Image } from "astro:assets";
+
+import logoWhite from "../../assets/kurrent-logo-white.svg";
+---
+
+<a class="text-base-800 dark:text-base-200 flex items-center gap-1 align-middle text-xl font-medium" href={"/"}>
+    <Image id="logo-white" src={logoWhite} alt="Kurrent logo" loading="eager" height={90} class="h-12 w-auto" aria-label="Kurrent logo" />
+</a>

@@ -3,9 +3,11 @@ import {defineConfig} from 'astro/config';
 import starlight from '@astrojs/starlight';
 import tailwindcss from '@tailwindcss/vite';
 import rehypeAstroRelativeMarkdownLinks from "astro-rehype-relative-markdown-links";
+import icon from "astro-icon";
 
 export default defineConfig({
     integrations: [
+        icon(),
         starlight({
             title: 'Replicator',
             logo: {
@@ -19,6 +21,9 @@ export default defineConfig({
                 './src/styles/custom.css',
             ],
             favicon: './favicon.ico',
+            components: {
+                Head: "./src/components/Header/Head.astro",
+            },
             social: [{icon: 'github', label: 'GitHub', href: 'https://github.com/kurrent-io/replicator'}],
             sidebar: [
                 {

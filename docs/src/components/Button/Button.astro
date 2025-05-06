@@ -1,0 +1,59 @@
+---
+import type { HTMLAttributes } from "astro/types";
+import { Icon } from "astro-icon/components";
+
+/**
+ *  * Notes:
+ *  if this is to be a link (<a>), pass an "href" prop
+ *  if this is to be a button (<button>), pass a "type" prop
+ *  you can pass the arrow prop with "left" or "right" to add an arrow to any button variant
+ */
+interface Props extends HTMLAttributes<"button">, Omit<HTMLAttributes<"a">, "type"> {
+	variant?: "primary" | "secondary" | "outline" | "ghost";
+	arrow?: "left" | "right" | "none";
+}
+
+const { variant = "primary", arrow = "none", class: className, ...rest } = Astro.props;
+
+const Component = Astro.props.href ? "a" : "button";
+---
+
+<Component
+	class:list={[
+		className,
+		`button group`,
+		{
+			"button--primary": variant === "primary",
+		},
+		{
+			"button--secondary": variant === "secondary",
+		},
+		{
+			"button--outline": variant === "outline",
+		},
+		{
+			"button--ghost": variant === "ghost",
+		},
+	]}
+	{...rest}
+>
+	{
+		arrow === "left" && (
+			<Icon
+				name="tabler/chevron-down"
+				class="mr-1.5 -ml-1 size-5 rotate-90 opacity-70"
+				aria-hidden="true"
+			/>
+		)
+	}
+	<slot />
+	{
+		arrow === "right" && (
+			<Icon
+				name="tabler/chevron-down"
+				class="-mr-1 ml-1.5 size-5 -rotate-90 opacity-70"
+				aria-hidden="true"
+			/>
+		)
+	}
+</Component>
