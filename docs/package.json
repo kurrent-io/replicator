@@ -16,9 +16,9 @@
     "@tailwindcss/vite": "^4.1.4",
     "astro": "^5.6.1",
     "astro-rehype-relative-markdown-links": "^0.18.1",
-    "sharp": "^0.32.5",
     "tailwindcss": "^4.1.4",
-    "astro-icon": "^1.1.5"
+    "astro-icon": "^1.1.5",
+    "sharp": "^0.33.5"
   },
   "engines": {
     "node": ">=18.19.0"

@@ -7,6 +7,8 @@ import rehypeAstroRelativeMarkdownLinks from "astro-rehype-relative-markdown-lin
 import icon from "astro-icon";
 
 export default defineConfig({
+    output: 'server',
+    site: "https://replicator.kurrent.io",
     adapter: cloudflare({
         // imageService: "cloudflare",
         imageService: "compile",
