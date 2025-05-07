@@ -2,10 +2,16 @@
 import {defineConfig} from 'astro/config';
 import starlight from '@astrojs/starlight';
 import tailwindcss from '@tailwindcss/vite';
+import cloudflare from "@astrojs/cloudflare";
 import rehypeAstroRelativeMarkdownLinks from "astro-rehype-relative-markdown-links";
 import icon from "astro-icon";
 
 export default defineConfig({
+    adapter: cloudflare({
+        // imageService: "cloudflare",
+        imageService: "compile",
+        platformProxy: {enabled: true}
+    }),
     integrations: [
         icon(),
         starlight({
