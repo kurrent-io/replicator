@@ -29,10 +29,8 @@ if (actualLink.endsWith("/") && actualLink !== "/") {
 <li>
     <a
             class:list={[
-                `nav__link--base relative flex h-10 w-full items-center gap-1.5 rounded-sm px-4 py-1.5 transition duration-200 ${className}`,
+                `nav__link--base relative flex h-10 w-full items-center gap-1.5 rounded-sm px-4 py-1.5 ${className}`,
                 {
-                    // styling for current active page link, if desired
-
                     "": Astro.url.pathname === actualLink,
                 },
             ]}

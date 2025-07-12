@@ -33,7 +33,7 @@ if (cols >= 5) {
 <!-- non-mobile mega menu menu -->
 <li class="mega-menu__dropdown group">
     <button
-            class="mega-menu__dropdown-button nav__link--base flex h-10 w-full items-center gap-1 px-4 py-2 leading-tight whitespace-nowrap transition duration-200"
+            class="mega-menu__dropdown-button nav__link--base flex h-10 w-full items-center gap-1 px-4 py-2 leading-tight whitespace-nowrap"
             type="button"
             id={`${slugify(navItem.text)}-mega-menu`}
             aria-expanded="false"
@@ -44,7 +44,7 @@ if (cols >= 5) {
         <Icon
                 name="tabler/chevron-down"
                 aria-hidden="true"
-                class="mega-menu__dropdown-chevron size-6 shrink-0 opacity-90 transition-transform"
+                class="mega-menu__dropdown-chevron size-6 shrink-0 opacity-90"
         />
     </button>
     <div
@@ -52,9 +52,8 @@ if (cols >= 5) {
             aria-labelledby={`${slugify(navItem.text)}-mega-menu`}
             data-state="closed"
             class:list={[
-                "mega-menu__dropdown-content absolute top-full z-10 transition-all duration-300",
-                "slide-in-from-bottom-2 fade-in-0 animate-in hidden will-change-transform",
-                "data-[state=closed]:fade-out-0 data-[state=closed]:animate-out",
+                "mega-menu__dropdown-content absolute top-full z-10",
+                "hidden",
                 insetClass,
             ]}
     >
@@ -77,7 +76,7 @@ if (cols >= 5) {
                             ) : (
                                     <a
                                             href={col.link}
-                                            class="group/cta relative mx-4 block overflow-hidden rounded-lg bg-base-100 p-4 transition-all hover:bg-base-200 dark:bg-base-800 dark:hover:bg-base-700"
+                                            class="group/cta relative mx-4 block overflow-hidden rounded-lg bg-base-100 p-4 hover:bg-base-200 dark:bg-base-800 dark:hover:bg-base-700"
                                     >
                                         <!--<Image-->
                                         <!--	src={col.image}-->
@@ -89,7 +88,7 @@ if (cols >= 5) {
 									{col.buttonText}
                                             <Icon
                                                     name="tabler/arrow-right"
-                                                    class="size-4 transition-transform group-hover/cta:translate-x-1"
+                                                    class="size-4 group-hover/cta:translate-x-1"
                                             />
 								</span>
                                     </a>

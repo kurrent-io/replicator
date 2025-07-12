@@ -22,3 +22,27 @@
     --sl-color-text-accent: var(--color-plum-500);
     --sl-color-gray-3: var(--color-base-600);
 }
+
+header.header {
+    margin-top: 5rem;
+}
+
+main.content {
+    margin-top: 1rem;
+}
+
+body {
+    padding-top: 4rem;
+}
+
+.right-sidebar-panel {
+    margin-top: 4rem;
+}
+
+.top-level {
+    margin-top: 5rem;
+}
+
+.sl-container {
+    margin-top: 2rem;
+}

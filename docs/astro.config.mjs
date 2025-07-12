@@ -18,11 +18,11 @@ export default defineConfig({
         icon(),
         starlight({
             title: 'Replicator',
-            logo: {
-                dark: "./src/assets/kurrent-logo-white.svg",
-                light: "./src/assets/kurrent-logo-black.svg",
-                replacesTitle: true
-            },
+            // logo: {
+            //     dark: "./src/assets/kurrent-logo-white.svg",
+            //     light: "./src/assets/kurrent-logo-black.svg",
+            //     replacesTitle: false
+            // },
             customCss: [
                 './src/styles/global.css',
                 './src/fonts/font-face.css',
