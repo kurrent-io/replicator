@@ -50,12 +50,16 @@ public class KafkaWriter : IEventWriter {
                 ]
             );
 
-            // TODO: Map meta to headers, but only for JSON
             var message = new Message<string, byte[]> {
                 Key   = partitionKey,
                 Value = p.Data
             };
-
+            
+            // Map metadata to Kafka headers when the payload is JSON
+            var headers = KafkaHeadersBuilder.BuildHeaders(p.EventDetails.ContentType, p.Metadata);
+            if (headers is { Count: > 0 })
+                message.Headers = headers;
+            
             var result = await _producer.ProduceAsync(topic, message, cancellationToken).ConfigureAwait(false);
 
             return result.Offset.Value;
