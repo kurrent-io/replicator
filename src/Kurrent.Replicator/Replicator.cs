@@ -22,6 +22,8 @@ public static class Replicator {
             ReplicatorOptions      replicatorOptions,
             CancellationToken      stoppingToken
         ) {
+        ReplicationRun.StartNew();
+
         ReplicationMetrics.SetCapacity(preparePipeOptions.BufferSize, sinkPipeOptions.BufferSize);
 
         var cts            = new CancellationTokenSource();
@@ -132,13 +134,23 @@ public static class Replicator {
         return;
 
         void Stop() {
-            Log.Info("Replicator stopping...");
+            Log.Info("Replicator stopping... [Run {RunId}].", ReplicationRun.RunId);
             stopping = true;
             writerCts.Cancel();
         }
 
         async Task Flush() {
-            Log.Info("Storing the last known checkpoint");
+            // The authoritative checkpoint is maintained by the checkpoint store
+            // (updated from the sink pipeline via StoreCheckpoint). Here we only
+            // trigger persistence of whatever the store currently holds in
+            // memory, without trying to compute or override that value using
+            // the reader's last position.
+
+            Log.Info(
+                "Flushing checkpoint store. Run={RunId}",
+                ReplicationRun.RunId
+            );
+
             await checkpointStore.Flush(CancellationToken.None).ConfigureAwait(false);
         }
 

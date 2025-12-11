@@ -62,30 +62,55 @@ public class GrpcEventReader : IEventReader {
 
             var evt = enumerator.Current;
             lastPosition = (long)(evt.OriginalPosition?.CommitPosition ?? 0);
+            var replicationMessageId = Guid.NewGuid();
+
+            var eventType  = evt.Event.EventType;
+            var isMetadata = eventType.StartsWith("$");
 
             _debugLog?.Debug(
-                "gRPC: Read event with id {Id} of type {Type} from {Stream} at {Position}",
+                "gRPC: Read event with id {Id} of type {Type} from {Stream} at {Position}, ReplicationMessageId={ReplicationMessageId}",
                 evt.Event.EventId,
-                evt.Event.EventType,
+                eventType,
                 evt.OriginalStreamId,
-                evt.OriginalPosition
+                evt.OriginalPosition,
+                replicationMessageId
             );
+
+            if (ReplicationDebugOptions.DebugPartitionSequences) {
+                _debugLog?.Debug(
+                    "Reader sequence. Position={Position}, EventType={EventType}, EventId={EventId}, Stream={Stream}, ReplicationMessageId={ReplicationMessageId}",
+                    evt.OriginalPosition,
+                    eventType,
+                    evt.Event.EventId,
+                    evt.OriginalStreamId,
+                    replicationMessageId
+                );
+
+                _debugLog?.Debug(
+                    "Event classification. Type={EventType}, IsMetadata={IsMetadata}, Stream={Stream}, Position={Position}, ReplicationMessageId={ReplicationMessageId}",
+                    eventType,
+                    isMetadata,
+                    evt.OriginalStreamId,
+                    evt.OriginalPosition,
+                    replicationMessageId
+                );
+            }
 
             BaseOriginalEvent originalEvent;
 
             if (evt.Event.EventType == Predefined.MetadataEventType) {
                 if (Encoding.UTF8.GetString(evt.Event.Data.Span) == StreamDeletedBody) {
-                    originalEvent = MapStreamDeleted(evt, sequence++, activity);
+                    originalEvent = MapStreamDeleted(evt, sequence++, activity, replicationMessageId);
                 }
                 else {
-                    originalEvent = MapMetadata(evt, sequence++, activity);
+                    originalEvent = MapMetadata(evt, sequence++, activity, replicationMessageId);
                 }
             }
             else if (evt.Event.EventType[0] != '$') {
-                originalEvent = Map(evt, sequence++, activity);
+                originalEvent = Map(evt, sequence++, activity, replicationMessageId);
             }
             else {
-                await next(MapIgnored(evt, sequence++, activity)).ConfigureAwait(false);
+                await next(MapIgnored(evt, sequence++, activity, replicationMessageId)).ConfigureAwait(false);
 
                 continue;
             }
@@ -105,16 +130,17 @@ public class GrpcEventReader : IEventReader {
         return (long?)events[0].OriginalPosition?.CommitPosition;
     }
 
-    static IgnoredOriginalEvent MapIgnored(ResolvedEvent evt, int sequence, Activity activity)
+    static IgnoredOriginalEvent MapIgnored(ResolvedEvent evt, int sequence, Activity activity, Guid replicationMessageId)
         => new(
             evt.Event.Created,
             MapDetails(evt.Event),
             MapPosition(evt),
             sequence,
-            new(activity.TraceId, activity.SpanId)
+            new(activity.TraceId, activity.SpanId),
+            replicationMessageId
         );
 
-    static OriginalEvent Map(ResolvedEvent evt, int sequence, Activity activity)
+    static OriginalEvent Map(ResolvedEvent evt, int sequence, Activity activity, Guid replicationMessageId)
         => new(
             evt.OriginalEvent.Created,
             MapDetails(evt.OriginalEvent),
@@ -122,10 +148,11 @@ public class GrpcEventReader : IEventReader {
             evt.OriginalEvent.Metadata.ToArray(),
             MapPosition(evt),
             sequence,
-            new(activity.TraceId, activity.SpanId)
+            new(activity.TraceId, activity.SpanId),
+            replicationMessageId
         );
 
-    static StreamMetadataOriginalEvent MapMetadata(ResolvedEvent evt, int sequence, Activity activity) {
+    static StreamMetadataOriginalEvent MapMetadata(ResolvedEvent evt, int sequence, Activity activity, Guid replicationMessageId) {
         var streamMeta = JsonSerializer.Deserialize<StreamMetadata>(
             evt.Event.Data.Span,
             MetaSerialization.StreamMetadataJsonSerializerOptions
@@ -149,17 +176,19 @@ public class GrpcEventReader : IEventReader {
             ),
             MapPosition(evt),
             sequence,
-            new(activity.TraceId, activity.SpanId)
+            new(activity.TraceId, activity.SpanId),
+            replicationMessageId
         );
     }
 
-    static StreamDeletedOriginalEvent MapStreamDeleted(ResolvedEvent evt, int sequence, Activity activity)
+    static StreamDeletedOriginalEvent MapStreamDeleted(ResolvedEvent evt, int sequence, Activity activity, Guid replicationMessageId)
         => new(
             evt.OriginalEvent.Created,
             MapSystemDetails(evt.OriginalEvent),
             MapPosition(evt),
             sequence,
-            new(activity.TraceId, activity.SpanId)
+            new(activity.TraceId, activity.SpanId),
+            replicationMessageId
         );
 
     static EventDetails MapDetails(EventRecord evt) =>

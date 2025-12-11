@@ -36,7 +36,8 @@ public class KafkaWriterHeadersTests {
             "data"u8.ToArray(),
             metadataBytes,
             new(0L, 0UL),
-            0L
+            0L,
+            Guid.NewGuid()
         );
 
         var result = await writer.WriteEvent(proposedEvent, CancellationToken.None);
@@ -74,7 +75,8 @@ public class KafkaWriterHeadersTests {
             "data"u8.ToArray(),
             metadata,
             new(0L, 0UL),
-            0L
+            0L,
+            Guid.NewGuid()
         );
 
         await writer.WriteEvent(proposedEvent, CancellationToken.None);
@@ -92,7 +94,8 @@ public class KafkaWriterHeadersTests {
             "data"u8.ToArray(),
             null,
             new(0L, 0UL),
-            0L
+            0L,
+            Guid.NewGuid()
         );
 
         await writer.WriteEvent(withNullMetadata, CancellationToken.None);
@@ -105,7 +108,8 @@ public class KafkaWriterHeadersTests {
             "data"u8.ToArray(),
             Array.Empty<byte>(),
             new(0L, 0UL),
-            0L
+            0L,
+            Guid.NewGuid()
         );
 
         await writer.WriteEvent(withEmptyMetadata, CancellationToken.None);
@@ -125,7 +129,8 @@ public class KafkaWriterHeadersTests {
             "data"u8.ToArray(),
             badMetadata,
             new(0L, 0UL),
-            0L
+            0L,
+            Guid.NewGuid()
         );
 
         await writer.WriteEvent(proposedEvent, CancellationToken.None);

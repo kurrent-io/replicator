@@ -16,7 +16,8 @@ public class PrepareContext : BasePipeContext, PipeContext, IEventDetailsContext
             OriginalEvent.EventDetails,
             OriginalEvent.LogPosition,
             OriginalEvent.SequenceNumber,
-            OriginalEvent.TracingMetadata
+            OriginalEvent.TracingMetadata,
+            OriginalEvent.ReplicationMessageId
         );
 
     public EventDetails EventDetails => OriginalEvent.EventDetails;

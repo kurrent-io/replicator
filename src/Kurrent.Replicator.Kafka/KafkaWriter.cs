@@ -40,15 +40,19 @@ public class KafkaWriter : IEventWriter {
         async Task<long> Append(ProposedEvent p) {
             var (topic, partitionKey) = _route(p);
 
-            _debug?.Invoke(
-                "Kafka: Write event with id {Id} of type {Type} to {Stream} with original position {Position}",
-                [
-                    proposedEvent.EventDetails.EventId,
-                    proposedEvent.EventDetails.EventType,
-                    topic,
-                    proposedEvent.SourceLogPosition.EventPosition
-                ]
-            );
+            if (ReplicationDebugOptions.DebugPartitionSequences && _debug != null) {
+                _debug(
+                    "Kafka: Write event with id {Id} of type {Type} to {Stream} with original position {Position}, ReplicationMessageId={ReplicationMessageId}, PartitionKey={PartitionKey}",
+                    [
+                        proposedEvent.EventDetails.EventId,
+                        proposedEvent.EventDetails.EventType,
+                        topic,
+                        proposedEvent.SourceLogPosition.EventPosition,
+                        proposedEvent.ReplicationMessageId,
+                        partitionKey
+                    ]
+                );
+            }
 
             var message = new Message<string, byte[]> {
                 Key   = partitionKey,

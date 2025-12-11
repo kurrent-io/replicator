@@ -29,7 +29,7 @@ public class HttpTransform {
             }
 
             if (response.StatusCode == HttpStatusCode.NoContent) {
-                return new IgnoredEvent(originalEvent.EventDetails, originalEvent.LogPosition, originalEvent.SequenceNumber);
+                return new IgnoredEvent(originalEvent.EventDetails, originalEvent.LogPosition, originalEvent.SequenceNumber, originalEvent.ReplicationMessageId);
             }
 
             var httpResponse = (await JsonSerializer.DeserializeAsync<HttpEvent>(
@@ -45,10 +45,11 @@ public class HttpTransform {
                 Encoding.UTF8.GetBytes(httpResponse.Payload),
                 httpResponse.Metadata == null ? originalEvent.Metadata : Encoding.UTF8.GetBytes(httpResponse.Metadata),
                 originalEvent.LogPosition,
-                originalEvent.SequenceNumber
+                originalEvent.SequenceNumber,
+                originalEvent.ReplicationMessageId
             );
         } catch (OperationCanceledException) {
-            return new NoEvent(originalEvent.EventDetails, originalEvent.LogPosition, originalEvent.SequenceNumber);
+            return new NoEvent(originalEvent.EventDetails, originalEvent.LogPosition, originalEvent.SequenceNumber, originalEvent.ReplicationMessageId);
         }
     }
 

@@ -79,21 +79,48 @@ public class TcpEventReader : IEventReader {
                 .ConfigureAwait(false);
 
             foreach (var sliceEvent in slice?.Events ?? Enumerable.Empty<ResolvedEvent>()) {
+                var replicationMessageId = Guid.NewGuid();
+
+                var eventType  = sliceEvent.Event.EventType;
+                var isMetadata = eventType.StartsWith("$");
+                
                 if (sliceEvent.Event.EventType.StartsWith('$') &&
                     sliceEvent.Event.EventType != Predefined.MetadataEventType) {
-                    await next(MapIgnored(sliceEvent, sequence++, activity)).ConfigureAwait(false);
+                    await next(MapIgnored(sliceEvent, sequence++, activity, replicationMessageId)).ConfigureAwait(false);
 
                     continue;
                 }
 
-                if (Log.IsDebugEnabled())
+                if (Log.IsDebugEnabled()) {
                     Log.Debug(
-                        "TCP: Read event with id {Id} of type {Type} from {Stream} at {Position}",
+                        "TCP: Read event with id {Id} of type {Type} from {Stream} at {Position}, ReplicationMessageId={ReplicationMessageId}",
                         sliceEvent.Event.EventId,
-                        sliceEvent.Event.EventType,
+                        eventType,
                         sliceEvent.OriginalStreamId,
-                        sliceEvent.OriginalPosition
+                        sliceEvent.OriginalPosition,
+                        replicationMessageId
                     );
+
+                    if (ReplicationDebugOptions.DebugPartitionSequences) {
+                        Log.Debug(
+                            "Reader sequence. Position={Position}, EventType={EventType}, EventId={EventId}, Stream={Stream}, ReplicationMessageId={ReplicationMessageId}",
+                            sliceEvent.OriginalPosition,
+                            eventType,
+                            sliceEvent.Event.EventId,
+                            sliceEvent.OriginalStreamId,
+                            replicationMessageId
+                        );
+
+                        Log.Debug(
+                            "Event classification. Type={EventType}, IsMetadata={IsMetadata}, Stream={Stream}, Position={Position}, ReplicationMessageId={ReplicationMessageId}",
+                            eventType,
+                            isMetadata,
+                            sliceEvent.OriginalStreamId,
+                            sliceEvent.OriginalPosition,
+                            replicationMessageId
+                        );
+                    }
+                }
 
                 if (sliceEvent.Event.EventType == Predefined.MetadataEventType) {
                     if (sliceEvent.Event.EventStreamId.StartsWith('$')) continue;
@@ -102,10 +129,10 @@ public class TcpEventReader : IEventReader {
                         if (Log.IsDebugEnabled())
                             Log.Debug("Stream deletion {Stream}", sliceEvent.Event.EventStreamId);
 
-                        await next(MapStreamDeleted(sliceEvent, sequence++, activity));
+                        await next(MapStreamDeleted(sliceEvent, sequence++, activity, replicationMessageId));
                     }
                     else {
-                        var meta = MapMetadata(sliceEvent, sequence++, activity);
+                        var meta = MapMetadata(sliceEvent, sequence++, activity, replicationMessageId);
 
                         if (Log.IsDebugEnabled())
                             Log.Debug("Stream meta {Stream}: {Meta}", sliceEvent.Event.EventStreamId, meta);
@@ -114,7 +141,7 @@ public class TcpEventReader : IEventReader {
                     }
                 }
                 else if (sliceEvent.Event.EventType[0] != '$') {
-                    var originalEvent = Map(sliceEvent, sequence++, activity);
+                    var originalEvent = Map(sliceEvent, sequence++, activity, replicationMessageId);
                     await next(originalEvent).ConfigureAwait(false);
                 }
             }
@@ -139,16 +166,17 @@ public class TcpEventReader : IEventReader {
 
     public ValueTask<bool> Filter(BaseOriginalEvent originalEvent) => _filter.Filter(originalEvent);
 
-    static IgnoredOriginalEvent MapIgnored(ResolvedEvent evt, int sequence, Activity activity)
+    static IgnoredOriginalEvent MapIgnored(ResolvedEvent evt, int sequence, Activity activity, Guid replicationMessageId)
         => new(
             evt.OriginalEvent.Created,
             MapDetails(evt.OriginalEvent, evt.OriginalEvent.IsJson),
             MapPosition(evt),
             sequence,
-            new(activity.TraceId, activity.SpanId)
+            new(activity.TraceId, activity.SpanId),
+            replicationMessageId
         );
 
-    static OriginalEvent Map(ResolvedEvent evt, int sequence, Activity activity)
+    static OriginalEvent Map(ResolvedEvent evt, int sequence, Activity activity, Guid replicationMessageId)
         => new(
             evt.OriginalEvent.Created,
             MapDetails(evt.OriginalEvent, evt.OriginalEvent.IsJson),
@@ -156,10 +184,11 @@ public class TcpEventReader : IEventReader {
             evt.OriginalEvent.Metadata,
             MapPosition(evt),
             sequence,
-            new(activity.TraceId, activity.SpanId)
+            new(activity.TraceId, activity.SpanId),
+            replicationMessageId
         );
 
-    static StreamMetadataOriginalEvent MapMetadata(ResolvedEvent evt, int sequence, Activity activity) {
+    static StreamMetadataOriginalEvent MapMetadata(ResolvedEvent evt, int sequence, Activity activity, Guid replicationMessageId) {
         var streamMeta = StreamMetadata.FromJsonBytes(evt.OriginalEvent.Data);
 
         return new(
@@ -180,17 +209,19 @@ public class TcpEventReader : IEventReader {
             ),
             MapPosition(evt),
             sequence,
-            new(activity.TraceId, activity.SpanId)
+            new(activity.TraceId, activity.SpanId),
+            replicationMessageId
         );
     }
 
-    static StreamDeletedOriginalEvent MapStreamDeleted(ResolvedEvent evt, int sequence, Activity activity)
+    static StreamDeletedOriginalEvent MapStreamDeleted(ResolvedEvent evt, int sequence, Activity activity, Guid replicationMessageId)
         => new(
             evt.OriginalEvent.Created,
             MapSystemDetails(evt.OriginalEvent),
             MapPosition(evt),
             sequence,
-            new(activity.TraceId, activity.SpanId)
+            new(activity.TraceId, activity.SpanId),
+            replicationMessageId
         );
 
     static EventDetails MapDetails(RecordedEvent evt, bool isJson) =>

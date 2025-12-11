@@ -26,12 +26,12 @@
     </ItemGroup>
 
     <Target Name="DebugEnsureNodeEnv" BeforeTargets="Build" Condition=" '$(Configuration)' == 'Debug' And !Exists('$(SpaRoot)node_modules') ">
-        <Exec Command="node --version" ContinueOnError="true">
-            <Output TaskParameter="ExitCode" PropertyName="ErrorCode" />
-        </Exec>
-        <Error Condition="'$(ErrorCode)' != '0'" Text="Node.js is required to build and run this project." />
-        <Message Importance="high" Text="Restoring dependencies using 'yarn'. This may take several minutes..." />
-        <Exec WorkingDirectory="$(SpaRoot)" Command="yarn install" />
+<!--        <Exec Command="node &#45;&#45;version" ContinueOnError="true">-->
+<!--            <Output TaskParameter="ExitCode" PropertyName="ErrorCode" />-->
+<!--        </Exec>-->
+<!--        <Error Condition="'$(ErrorCode)' != '0'" Text="Node.js is required to build and run this project." />-->
+<!--        <Message Importance="high" Text="Restoring dependencies using 'yarn'. This may take several minutes..." />-->
+<!--        <Exec WorkingDirectory="$(SpaRoot)" Command="yarn install" />-->
     </Target>
 
     <Target Name="PublishRunWebpack" AfterTargets="ComputeFilesToPublish">
