@@ -33,6 +33,8 @@ public class PartitionChannel : Agent {
                 if (context == null || pipe == null)
                     throw new InvalidCastException("Wrong context type, expected SinkContext");
 
+                Log.Warn("debug 0 === {proposedSequence} {writeSequence}", context.ProposedEvent.SequenceNumber, _writeSequence);
+                
                 if (context.ProposedEvent.SequenceNumber < _writeSequence)
                     Log.Warn("Wrong sequence for {Type}", context.ProposedEvent.EventDetails.EventType);
                 _writeSequence = context.ProposedEvent.SequenceNumber;

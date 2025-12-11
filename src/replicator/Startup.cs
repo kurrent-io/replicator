@@ -64,7 +64,7 @@ static class Startup {
             new ReplicatorOptions(
                 replicatorOptions.RestartOnFailure,
                 replicatorOptions.RunContinuously,
-                TimeSpan.FromSeconds(replicatorOptions.RestartDelayInSeconds),
+                TimeSpan.FromMilliseconds(replicatorOptions.RestartDelayInMilliseconds),
                 TimeSpan.FromSeconds(replicatorOptions.ReportMetricsFrequencyInSeconds)
             )
         );

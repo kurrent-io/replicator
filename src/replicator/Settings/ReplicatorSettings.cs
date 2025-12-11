@@ -49,7 +49,7 @@ public record Replicator {
     public bool              Scavenge                        { get; init; }
     public bool              RestartOnFailure                { get; init; } = true;
     public bool              RunContinuously                 { get; init; } = true;
-    public int               RestartDelayInSeconds           { get; init; } = 5;
+    public long              RestartDelayInMilliseconds      { get; init; } = 5000;
     public int               ReportMetricsFrequencyInSeconds { get; init; } = 5;
     public Checkpoint        Checkpoint                      { get; init; } = new();
     public TransformSettings Transform                       { get; init; } = new();
