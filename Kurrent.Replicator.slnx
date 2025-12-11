@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/test/">
+    <Project Path="test\Kurrent.Replicator.Kafka.Tests\Kurrent.Replicator.Kafka.Tests.csproj" />
     <Project Path="test\Kurrent.Replicator.Tests\Kurrent.Replicator.Tests.csproj" />
   </Folder>
   <Project Path="src\Kurrent.Replicator.EventStore\Kurrent.Replicator.EventStore.csproj" />
