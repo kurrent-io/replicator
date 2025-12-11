@@ -59,6 +59,18 @@ public class MongoCheckpointStore : ICheckpointStore {
     }
 
     public async ValueTask StoreCheckpoint(LogPosition logPosition, CancellationToken cancellationToken) {
+        // Ensure checkpoint never moves backwards within a run.
+        if (_lastPosition != null && logPosition.EventPosition < _lastPosition.EventPosition) {
+            Log.Error(
+                "Attempt to move checkpoint backwards. Current={Current}, New={New}",
+                _lastPosition,
+                logPosition
+            );
+
+            // Ignore the backwards update to maintain monotonicity.
+            return;
+        }
+
         _lastPosition = logPosition;
 
         Interlocked.Increment(ref _counter);

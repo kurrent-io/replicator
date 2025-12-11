@@ -10,12 +10,12 @@ public class HashPartitioner : Supervisor, IPartitioner {
     readonly int                _partitionCount;
     readonly PartitionChannel[] _partitions;
 
-    public HashPartitioner(int partitionCount, IHashGenerator hashGenerator) {
+    public HashPartitioner(int partitionCount, IHashGenerator hashGenerator, bool ignoreMetadataEventsForPartitioning = false) {
         _partitionCount = partitionCount;
         _hashGenerator  = hashGenerator;
 
         _partitions = Enumerable.Range(0, partitionCount)
-            .Select(index => new PartitionChannel(index))
+            .Select(index => new PartitionChannel(index, ignoreMetadataEventsForPartitioning))
             .ToArray();
     }
 

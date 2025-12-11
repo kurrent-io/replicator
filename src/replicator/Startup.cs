@@ -6,6 +6,7 @@ using Kurrent.Replicator.KurrentDb;
 using Kurrent.Replicator.Mongo;
 using Kurrent.Replicator.Prepare;
 using Kurrent.Replicator.Shared;
+using Kurrent.Replicator.Shared.Observe;
 using Kurrent.Replicator.Sink;
 using Prometheus;
 using replicator.HttpApi;
@@ -20,6 +21,15 @@ static class Startup {
         Measurements.ConfigureMetrics(builder.Environment.EnvironmentName);
 
         var replicatorOptions = builder.Configuration.GetAs<Replicator>();
+
+        if (replicatorOptions.DebugPartitionSequences) {
+            // Enable high-verbosity partition/sequence diagnostics for this run.
+            ReplicationDebugOptions.DebugPartitionSequences = true;
+
+            var log = Kurrent.Replicator.Shared.Logging.LogProvider.GetCurrentClassLogger();
+            log.Log(Kurrent.Replicator.Shared.Logging.LogLevel.Info,
+                () => "DebugPartitionSequences is ENABLED. High-verbosity sequencing logs may produce large volumes of output and should not be used in production.");
+        }
 
         var services = builder.Services;
 
@@ -52,19 +62,26 @@ static class Startup {
             )
         );
 
-        services.AddSingleton(
-            new SinkPipeOptions(
+        services.AddSingleton(sp => {
+            if (replicatorOptions.Sink.IgnoreMetadataEventsForPartitioning) {
+                var log = Kurrent.Replicator.Shared.Logging.LogProvider.GetCurrentClassLogger();
+                log.Log(Kurrent.Replicator.Shared.Logging.LogLevel.Info,
+                    () => "IgnoreMetadataEventsForPartitioning is ENABLED. Metadata events will bypass partition sequencing checks.");
+            }
+
+            return new SinkPipeOptions(
                 replicatorOptions.Sink.PartitionCount,
                 replicatorOptions.Sink.BufferSize,
-                FunctionLoader.LoadFile(replicatorOptions.Sink.Partitioner, "Partitioner")
-            )
-        );
+                FunctionLoader.LoadFile(replicatorOptions.Sink.Partitioner, "Partitioner"),
+                replicatorOptions.Sink.IgnoreMetadataEventsForPartitioning
+            );
+        });
 
         services.AddSingleton(
             new ReplicatorOptions(
                 replicatorOptions.RestartOnFailure,
                 replicatorOptions.RunContinuously,
-                TimeSpan.FromSeconds(replicatorOptions.RestartDelayInSeconds),
+                TimeSpan.FromMilliseconds(replicatorOptions.RestartDelayInMilliseconds),
                 TimeSpan.FromSeconds(replicatorOptions.ReportMetricsFrequencyInSeconds)
             )
         );

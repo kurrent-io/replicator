@@ -63,19 +63,22 @@ public class TransformFilter(TransformEvent transform) : IFilter<PrepareContext>
                 new ProposedDeleteStream(
                     deleted.EventDetails,
                     deleted.LogPosition,
-                    deleted.SequenceNumber
+                    deleted.SequenceNumber,
+                    deleted.ReplicationMessageId
                 ),
             StreamMetadataOriginalEvent meta =>
                 new ProposedMetaEvent(
                     meta.EventDetails,
                     meta.Data,
                     meta.LogPosition,
-                    meta.SequenceNumber
+                    meta.SequenceNumber,
+                    meta.ReplicationMessageId
                 ),
             IgnoredOriginalEvent ignored => new IgnoredEvent(
                 ignored.EventDetails,
                 ignored.LogPosition,
-                ignored.SequenceNumber
+                ignored.SequenceNumber,
+                ignored.ReplicationMessageId
             ),
             _ => throw new InvalidOperationException("Unknown original event type")
         };

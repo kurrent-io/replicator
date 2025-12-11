@@ -40,22 +40,30 @@ public class KafkaWriter : IEventWriter {
         async Task<long> Append(ProposedEvent p) {
             var (topic, partitionKey) = _route(p);
 
-            _debug?.Invoke(
-                "Kafka: Write event with id {Id} of type {Type} to {Stream} with original position {Position}",
-                [
-                    proposedEvent.EventDetails.EventId,
-                    proposedEvent.EventDetails.EventType,
-                    topic,
-                    proposedEvent.SourceLogPosition.EventPosition
-                ]
-            );
+            if (ReplicationDebugOptions.DebugPartitionSequences && _debug != null) {
+                _debug(
+                    "Kafka: Write event with id {Id} of type {Type} to {Stream} with original position {Position}, ReplicationMessageId={ReplicationMessageId}, PartitionKey={PartitionKey}",
+                    [
+                        proposedEvent.EventDetails.EventId,
+                        proposedEvent.EventDetails.EventType,
+                        topic,
+                        proposedEvent.SourceLogPosition.EventPosition,
+                        proposedEvent.ReplicationMessageId,
+                        partitionKey
+                    ]
+                );
+            }
 
-            // TODO: Map meta to headers, but only for JSON
             var message = new Message<string, byte[]> {
                 Key   = partitionKey,
                 Value = p.Data
             };
-
+            
+            // Map metadata to Kafka headers when the payload is JSON
+            var headers = KafkaHeadersBuilder.BuildHeaders(p.EventDetails.ContentType, p.Metadata);
+            if (headers is { Count: > 0 })
+                message.Headers = headers;
+            
             var result = await _producer.ProduceAsync(topic, message, cancellationToken).ConfigureAwait(false);
 
             return result.Offset.Value;

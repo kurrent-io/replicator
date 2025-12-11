@@ -77,13 +77,14 @@ public class JsTransform(string jsFunc) {
         );
 
         BaseProposedEvent evt = result == null
-            ? new IgnoredEvent(original.EventDetails, original.LogPosition, original.SequenceNumber)
+            ? new IgnoredEvent(original.EventDetails, original.LogPosition, original.SequenceNumber, original.ReplicationMessageId)
             : new ProposedEvent(
                 original.EventDetails with { Stream = result.Stream, EventType = result.EventType },
                 result.Data,
                 result.Meta,
                 original.LogPosition,
-                original.SequenceNumber
+                original.SequenceNumber,
+                original.ReplicationMessageId
             );
 
         return new(evt);

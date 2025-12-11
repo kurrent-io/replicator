@@ -13,7 +13,8 @@ public static class Transforms {
                 originalEvent.Data,
                 AddMeta(),
                 originalEvent.LogPosition,
-                originalEvent.SequenceNumber
+                originalEvent.SequenceNumber,
+                originalEvent.ReplicationMessageId
             );
 
         return new(proposed);

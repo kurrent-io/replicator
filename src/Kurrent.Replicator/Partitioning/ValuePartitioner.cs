@@ -30,7 +30,7 @@ public class ValuePartitioner : Supervisor, IPartitioner {
         var partitionKey = key.StartsWith("$") ? "$system" : key;
         if (!_partitions.ContainsKey(partitionKey)) {
             Log.Info("Adding new partition {Partition}", partitionKey);
-            _partitions[partitionKey] = new PartitionChannel(_partitionsCount++);
+            _partitions[partitionKey] = new PartitionChannel(_partitionsCount++, ignoreMetadataEventsForPartitioning: false);
         }
         await _partitions[partitionKey].Send(context, next);
     }

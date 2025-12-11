@@ -25,7 +25,7 @@ public class SinkPipe {
                         ? x => KeyProvider.ByStreamName(x.ProposedEvent)
                         : GetJsPartitioner();
 
-                    cfg.UsePartitioner(new HashPartitioner(options.PartitionCount, new Murmur3UnsafeHashGenerator()), keyProvider);
+                    cfg.UsePartitioner(new HashPartitioner(options.PartitionCount, new Murmur3UnsafeHashGenerator(), options.IgnoreMetadataEventsForPartitioning), keyProvider);
                 }
                 else if (useJsPartitioner) {
                     cfg.UsePartitioner(new ValuePartitioner(), GetJsPartitioner());
