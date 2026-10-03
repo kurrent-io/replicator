@@ -1,3 +1,4 @@
+#nullable enable
 using EventStore.Client;
 using Grpc.Core;
 using Kurrent.Replicator.KurrentDb.Auth;
