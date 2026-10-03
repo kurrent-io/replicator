@@ -87,7 +87,7 @@ class Realtime {
             } catch (OperationCanceledException) when (_auth.Shutdown.IsCancellationRequested) {
                 throw;
             } catch (Exception e) {
-                Log.Warn(e, "Realtime subscription failed; retrying");
+                Log.Warn("Realtime subscription failed; retrying ({Error})", AuthFailure.Describe(e));
                 await Task.Delay(TokenGate.Backoff(failures++), _auth.Time, _auth.Shutdown).ConfigureAwait(false);
             }
         }
@@ -157,10 +157,10 @@ class Realtime {
             }
         }
 
-        if (exception != null && AuthFailure.IsTokenFailure(exception))
+        if (exception != null)
             Log.Warn("Realtime subscription dropped: {Reason} ({Error})", reason, AuthFailure.Describe(exception));
         else
-            Log.Warn(exception, "Realtime subscription dropped: {Reason}", reason);
+            Log.Warn("Realtime subscription dropped: {Reason}", reason);
 
         if (!resubscribe) return;
 
