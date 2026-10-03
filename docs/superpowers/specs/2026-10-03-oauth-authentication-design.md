@@ -235,6 +235,7 @@ The loop has no attempt limit: a persistent rejection (for example a wrong audie
 - `EnsureSubscribed(CancellationToken ct)` is the only way to subscribe. Under the lock: if a subscription is active, return. If `_subscribing` is running, await it (with `ct` applied via `WaitAsync`). Otherwise start `_subscribing = SubscribeLoop()` and await it.
 - `SubscribeLoop()` calls `SubscribeToAllAsync` through `auth.Run` (which handles token failures and invalidation), and additionally retries any other failure with the same capped backoff, logging each, until it succeeds or the shutdown token is cancelled. On success it stores the subscription and clears `_subscribing`.
 - `Start()` (called from `ReadEvents`) becomes `EnsureSubscribed(cancellationToken)`. Concurrent foreground and recovery callers therefore share one attempt, and there is never more than one subscription.
+- The token used for the active subscription is stored with it. `HandleDrop` with a token-failure exception calls `Invalidate(t)` for that token first.
 - `HandleDrop` (any reason except `Disposed`) clears the stored subscription under the lock and calls `EnsureSubscribed(CancellationToken.None)` without awaiting it. The loop is still bound to shutdown, and any exception other than cancellation is caught and logged inside the loop, so nothing is unobserved.
 - `Realtime` gets an internal constructor taking a `Func<CancellationToken, Task<StreamSubscription>>` subscribe delegate, `GrpcAuthContext` and `TimeProvider`, so all of this is unit-testable without a server.
 
