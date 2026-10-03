@@ -101,6 +101,8 @@ Read also about [monitoring](#monitoring) the replicator process in Kubernetes.
 
 ### OAuth authentication
 
+OAuth requires a Replicator release that includes OAuth support, which is newer than the chart's default image tag (`0.4.7`). Set `image.tag` to such a release.
+
 When a cluster uses OAuth (for example with Microsoft Entra ID), configure that side's `auth` section and inject the secret from a Kubernetes Secret. Never put `clientSecret` in `values.yml`: the `replicator` block is rendered into a ConfigMap.
 
 ```bash
@@ -131,7 +133,7 @@ extraVolumeMounts:
     readOnly: true
 ```
 
-Alternatively, pass the secret as an environment variable instead of a file:
+Alternatively, pass the secret as an environment variable instead of a file. In that case remove `clientSecretFile` (and the secret volume) from the values above, because exactly one of `clientSecret`, `clientSecretFile` and `clientAssertionFile` may be set:
 
 ```yaml
 extraEnv:

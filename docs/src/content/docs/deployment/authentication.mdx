@@ -7,7 +7,7 @@ sidebar:
 
 Replicator authenticates to each KurrentDB cluster separately. The reader (source) and the sink (target) each have their own optional `auth` section, so any combination works: basic on one side and OAuth on the other, OAuth on both with different identity providers, or basic on both.
 
-OAuth is supported for the `grpc` protocol only. It requires TLS (`tls=true`, the default), and the connection string must not contain `user:pass@`.
+OAuth requires a Replicator release that includes OAuth support. It is supported for the `grpc` protocol only. It requires TLS (`tls=true`, the default), and the connection string must not contain `user:pass@`.
 
 ## Auth types
 
@@ -21,7 +21,7 @@ OAuth is supported for the `grpc` protocol only. It requires TLS (`tls=true`, th
 
 | Option | Type | Description |
 |:--|:--|:--|
-| `tokenEndpoint` | `oauthClientCredentials` | Token endpoint URL. Must be `https` (plain `http` only for `localhost`). |
+| `tokenEndpoint` | `oauthClientCredentials` | Token endpoint URL. Must be `https` (plain `http` only for loopback addresses, such as `localhost` and `127.0.0.1`). |
 | `clientId` | `oauthClientCredentials` | OAuth client ID of the Replicator identity. |
 | `clientSecret` | `oauthClientCredentials` | Client secret. Set it through the `REPLICATOR_<SIDE>_AUTH_CLIENTSECRET` environment variable, not in the YAML file. |
 | `clientSecretFile` | `oauthClientCredentials` | Path to a file with the client secret, e.g. a mounted Kubernetes Secret. |
@@ -34,7 +34,7 @@ OAuth is supported for the `grpc` protocol only. It requires TLS (`tls=true`, th
 | `tokenFile` | `oauthTokenFile` | Path to a file containing only the access token. |
 | `tokenFileReloadSeconds` | `oauthTokenFile` | How often to re-read the file. Default `30`. |
 
-Exactly one of `clientSecret`, `clientSecretFile` and `clientAssertionFile` must be set. Every option can also be set with an environment variable, for example `REPLICATOR_SINK_AUTH_TOKENENDPOINT` or `REPLICATOR_SINK_AUTH_ADDITIONALPARAMETERS_AUDIENCE`.
+Exactly one of `clientSecret`, `clientSecretFile` and `clientAssertionFile` must be set. Every option can also be set with an environment variable, for example `REPLICATOR_SINK_AUTH_TOKENENDPOINT` or `REPLICATOR_SINK_AUTH_ADDITIONALPARAMETERS_AUDIENCE`. The exception is an `additionalParameters` key that contains an underscore (such as `requested_token_use`): environment variable names use underscores as separators, so set those keys in the YAML file.
 
 ## KurrentDB permissions
 
