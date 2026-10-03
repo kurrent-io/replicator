@@ -30,8 +30,7 @@ public class GrpcEventReader : IEventReader {
         var metaCache = new StreamMetaCache();
         _client   = client;
         _filter   = new(client, metaCache, Auth.GrpcAuthContext.None);
-        _realtime = new(client, metaCache);
-        metaCache.MarkLive();
+        _realtime = new(client, metaCache, Auth.GrpcAuthContext.None);
     }
 
     public async Task ReadEvents(LogPosition fromLogPosition, Func<BaseOriginalEvent, ValueTask> next, CancellationToken cancellationToken) {
@@ -40,7 +39,7 @@ public class GrpcEventReader : IEventReader {
 
         _log.Info("Starting gRPC reader");
 
-        await _realtime.Start();
+        await _realtime.Start(cancellationToken).ConfigureAwait(false);
 
         var (_, eventPosition) = fromLogPosition;
 

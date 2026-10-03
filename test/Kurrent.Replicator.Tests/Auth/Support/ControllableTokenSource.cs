@@ -14,6 +14,7 @@ public sealed class ControllableTokenSource(TimeProvider time) : IAccessTokenSou
     public ConcurrentQueue<(AccessTokenLease Lease, bool Applied)> Invalidated { get; } = new();
     public ConcurrentQueue<AccessTokenLease>                       Accepted    { get; } = new();
     public Action<AccessTokenLease>?                               OnInvalidate { get; set; }
+    public Action<AccessTokenLease>?                               OnAccepted   { get; set; }
 
     public int  Calls      => Volatile.Read(ref _calls);
     public long Generation => _state.Generation;
@@ -35,5 +36,6 @@ public sealed class ControllableTokenSource(TimeProvider time) : IAccessTokenSou
     public void ReportAccepted(AccessTokenLease lease) {
         Accepted.Enqueue(lease);
         _state.ReportAccepted(lease);
+        OnAccepted?.Invoke(lease);
     }
 }
