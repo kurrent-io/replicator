@@ -29,8 +29,9 @@ public class GrpcEventReader : IEventReader {
 
         var metaCache = new StreamMetaCache();
         _client   = client;
-        _filter   = new(client, metaCache);
+        _filter   = new(client, metaCache, Auth.GrpcAuthContext.None);
         _realtime = new(client, metaCache);
+        metaCache.MarkLive();
     }
 
     public async Task ReadEvents(LogPosition fromLogPosition, Func<BaseOriginalEvent, ValueTask> next, CancellationToken cancellationToken) {

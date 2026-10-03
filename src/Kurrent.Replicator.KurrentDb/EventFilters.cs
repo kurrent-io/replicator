@@ -1,10 +1,26 @@
+using Kurrent.Replicator.KurrentDb.Auth;
 using Kurrent.Replicator.Shared.Contracts;
 
 namespace Kurrent.Replicator.KurrentDb;
 
-class ScavengedEventsFilter(EventStoreClient client, StreamMetaCache cache) {
+class ScavengedEventsFilter(
+        Func<string, CallAuth, CancellationToken, Task<StreamMeta>> readMeta,
+        Func<string, CallAuth, CancellationToken, Task<StreamSize>> readSize,
+        StreamMetaCache                                             cache,
+        GrpcAuthContext                                             auth
+    ) {
+    public ScavengedEventsFilter(EventStoreClient client, StreamMetaCache cache, GrpcAuthContext auth)
+        : this(
+            (s, a, c) => client.GetStreamMeta(s, a.Credentials, c),
+            (s, a, c) => client.GetStreamSize(s, a.Credentials, c),
+            cache,
+            auth
+        ) { }
+
     public async ValueTask<bool> Filter(BaseOriginalEvent originalEvent) {
-        var meta = await cache.GetOrAddStreamMeta(originalEvent.EventDetails.Stream, client.GetStreamMeta).ConfigureAwait(false);
+        var stream = originalEvent.EventDetails.Stream;
+
+        var meta = await cache.GetOrAddStreamMeta(stream, s => auth.Run((a, c) => readMeta(s, a, c), CancellationToken.None)).ConfigureAwait(false);
 
         return meta == null || !meta.IsDeleted && !TtlExpired() && !await OverMaxCount().ConfigureAwait(false);
 
@@ -15,7 +31,7 @@ class ScavengedEventsFilter(EventStoreClient client, StreamMetaCache cache) {
             if (!meta.MaxCount.HasValue)
                 return false;
 
-            var streamSize = await cache.GetOrAddStreamSize(originalEvent.EventDetails.Stream, client.GetStreamSize).ConfigureAwait(false);
+            var streamSize = await cache.GetOrAddStreamSize(stream, s => auth.Run((a, c) => readSize(s, a, c), CancellationToken.None)).ConfigureAwait(false);
 
             return originalEvent.LogPosition.EventNumber < streamSize.LastEventNumber - meta.MaxCount;
         }
