@@ -29,19 +29,21 @@ public static class Replicator {
         var prepareChannel = Channel.CreateBounded<PrepareContext>(preparePipeOptions.BufferSize);
         var sinkChannel    = Channel.CreateBounded<SinkContext>(sinkPipeOptions.BufferSize);
 
+        var writerCts = new CancellationTokenSource();
+
         var readerPipe = new ReaderPipe(
             reader,
             checkpointStore,
             ctx => prepareChannel.Writer.WriteAsync(ctx, ctx.CancellationToken)
         );
 
+        // writerCts (not ctx.CancellationToken, which is None) so a hand-off blocked on a full sink channel ends at shutdown
         var preparePipe = new PreparePipe(
             preparePipeOptions.Filter,
             preparePipeOptions.Transform,
-            ctx => sinkChannel.Writer.WriteAsync(ctx, ctx.CancellationToken)
+            ctx => sinkChannel.Writer.WriteAsync(ctx, writerCts.Token)
         );
-        var sinkPipe  = new SinkPipe(writer, sinkPipeOptions, checkpointStore);
-        var writerCts = new CancellationTokenSource();
+        var sinkPipe = new SinkPipe(writer, sinkPipeOptions, checkpointStore);
 
         var prepareTask = CreateChannelShovel(
             "Prepare",
@@ -86,17 +88,24 @@ public static class Replicator {
 
                 ReplicationStatus.Stop();
 
-                while (sinkChannel.Reader.Count > 0) {
+                while (sinkChannel.Reader.Count > 0 && !writerTask.IsCompleted) {
                     await checkpointStore.Flush(CancellationToken.None).ConfigureAwait(false);
                     Log.Info("Waiting for the sink pipe to exhaust ({Left} left)...", sinkChannel.Reader.Count);
                     await Task.Delay(1000, CancellationToken.None).ConfigureAwait(false);
                 }
 
+                if (writerTask.IsCompleted && sinkChannel.Reader.Count > 0) {
+                    Log.Warn(
+                        "Writer stopped with {Count} events not written; they will be read again from the last checkpoint",
+                        sinkChannel.Reader.Count
+                    );
+                }
+
                 await Flush().ConfigureAwait(false);
 
                 if (stopping) {
-                    sinkChannel.Writer.Complete();
                     await writerCts.CancelAsync();
+                    sinkChannel.Writer.Complete();
 
                     break;
                 }
@@ -152,18 +161,31 @@ public static class Replicator {
             => Task.Run(() => channel.Shovel(send, () => Log.Info($"{name} started"), () => Log.Info($"{name} stopped"), size, token), token);
 
         async Task Report() {
-            try {
-                while (!stoppingToken.IsCancellationRequested) {
+            DateTimeOffset? lastWarning = null;
+
+            while (!stoppingToken.IsCancellationRequested) {
+                try {
                     var position = await reader.GetLastPosition(stoppingToken).ConfigureAwait(false);
 
                     if (position.HasValue) {
                         ReplicationMetrics.LastSourcePosition.Set(position.Value);
                     }
+                } catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
+                    break;
+                } catch (Exception e) {
+                    var now = DateTimeOffset.UtcNow;
 
-                    await Task.Delay(replicatorOptions.ReportMetricsFrequency, stoppingToken).ConfigureAwait(false);
+                    if (lastWarning is null || now - lastWarning > TimeSpan.FromMinutes(1)) {
+                        lastWarning = now;
+                        Log.Warn(e, "Unable to read the source position for metrics; will retry");
+                    }
                 }
-            } catch (OperationCanceledException) {
-                // it's ok
+
+                try {
+                    await Task.Delay(replicatorOptions.ReportMetricsFrequency, stoppingToken).ConfigureAwait(false);
+                } catch (OperationCanceledException) {
+                    break;
+                }
             }
 
             Log.Info("Reporting stopped");
