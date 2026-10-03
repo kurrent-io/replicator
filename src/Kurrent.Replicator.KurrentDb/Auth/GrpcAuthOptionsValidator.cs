@@ -37,8 +37,7 @@ public static class GrpcAuthOptionsValidator {
 
         if (credentialCount != 1) errors.Add("exactly one of clientSecret, clientSecretFile or clientAssertionFile must be set");
 
-        if (!string.IsNullOrEmpty(o.ClientSecretFile) && (!File.Exists(o.ClientSecretFile) || File.ReadAllText(o.ClientSecretFile).Trim().Length == 0))
-            errors.Add($"clientSecretFile {o.ClientSecretFile} does not exist or is empty");
+        if (!string.IsNullOrEmpty(o.ClientSecretFile)) ValidateSecretFile(o.ClientSecretFile, errors);
 
         if (!string.IsNullOrEmpty(o.ClientAssertionFile) && !File.Exists(o.ClientAssertionFile))
             errors.Add($"clientAssertionFile {o.ClientAssertionFile} does not exist");
@@ -50,6 +49,20 @@ public static class GrpcAuthOptionsValidator {
         var reserved = o.AdditionalParameters.Keys.Where(Reserved.Contains).ToList();
 
         if (reserved.Count > 0) errors.Add($"additionalParameters must not override {string.Join(", ", reserved)}");
+    }
+
+    static void ValidateSecretFile(string path, List<string> errors) {
+        if (!File.Exists(path)) {
+            errors.Add($"clientSecretFile {path} does not exist or is empty");
+
+            return;
+        }
+
+        try {
+            if (File.ReadAllText(path).Trim().Length == 0) errors.Add($"clientSecretFile {path} does not exist or is empty");
+        } catch (Exception e) when (e is IOException or UnauthorizedAccessException) {
+            errors.Add($"clientSecretFile {path} cannot be read ({e.GetType().Name})");
+        }
     }
 
     static void ValidateTokenFile(GrpcAuthOptions o, List<string> errors) {

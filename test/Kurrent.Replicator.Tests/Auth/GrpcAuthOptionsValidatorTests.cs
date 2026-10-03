@@ -65,6 +65,24 @@ public class GrpcAuthOptionsValidatorTests {
     }
 
     [Test]
+    public async Task Unreadable_secret_file_is_an_error_not_an_exception() {
+        if (OperatingSystem.IsWindows() || Environment.UserName == "root") return; // root ignores file modes
+
+        var dir = Directory.CreateTempSubdirectory().FullName;
+        var file = Path.Combine(dir, "secret");
+        await File.WriteAllTextAsync(file, "s3cr3t");
+        File.SetUnixFileMode(file, UnixFileMode.None);
+
+        try {
+            var errors = GrpcAuthOptionsValidator.Validate(Cc(o => o with { ClientSecret = null, ClientSecretFile = file }), Tls);
+            await Assert.That(string.Join(";", errors)).Contains($"clientSecretFile {file} cannot be read");
+        } finally {
+            File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Test]
     public async Task Token_file_rules() {
         var ok = new GrpcAuthOptions { Type = GrpcAuthType.OAuthTokenFile, TokenFile = "/not/yet/written" };
         await Assert.That(GrpcAuthOptionsValidator.Validate(ok, Tls)).IsEmpty(); // existence not required at startup
