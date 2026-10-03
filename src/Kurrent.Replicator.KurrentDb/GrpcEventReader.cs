@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using Kurrent.Replicator.KurrentDb.Auth;
 using Kurrent.Replicator.KurrentDb.Internals;
 using Kurrent.Replicator.Shared.Contracts;
 using Kurrent.Replicator.Shared.Logging;
@@ -20,17 +21,23 @@ public class GrpcEventReader : IEventReader {
     const string StreamDeletedBody = "{\"$tb\":9223372036854775807}";
 
     readonly EventStoreClient      _client;
+    readonly GrpcAuthContext       _auth;
     readonly ScavengedEventsFilter _filter;
     readonly Realtime              _realtime;
 
-    public GrpcEventReader(EventStoreClient client) {
+    public GrpcEventReader(EventStoreClient client) : this(client, GrpcAuthContext.None) { }
+
+    public GrpcEventReader(EventStoreClient client, GrpcAuthContext auth) : this(client, auth, cache => new Realtime(client, cache, auth)) { }
+
+    internal GrpcEventReader(EventStoreClient client, GrpcAuthContext auth, Func<StreamMetaCache, Realtime> realtimeFactory) {
         _log      = LogProvider.GetCurrentClassLogger();
         _debugLog = _log.IsDebugEnabled() ? _log : null;
 
-        var metaCache = new StreamMetaCache();
+        var metaCache = new StreamMetaCache(failClosedOnAuthErrors: auth.Enabled);
         _client   = client;
-        _filter   = new(client, metaCache, Auth.GrpcAuthContext.None);
-        _realtime = new(client, metaCache, Auth.GrpcAuthContext.None);
+        _auth     = auth;
+        _filter   = new(client, metaCache, auth);
+        _realtime = realtimeFactory(metaCache);
     }
 
     public async Task ReadEvents(LogPosition fromLogPosition, Func<BaseOriginalEvent, ValueTask> next, CancellationToken cancellationToken) {
@@ -43,67 +50,90 @@ public class GrpcEventReader : IEventReader {
 
         var (_, eventPosition) = fromLogPosition;
 
-        var read = _client.ReadAllAsync(Direction.Forwards, new(eventPosition, eventPosition), cancellationToken: cancellationToken);
+        var callAuth = await _auth.AcquireCredentials(cancellationToken).ConfigureAwait(false);
+        var accepted = false;
 
-        var enumerator = read.GetAsyncEnumerator(cancellationToken);
-
-        do {
-            using var activity = new Activity("read");
-            activity.Start();
-
-            var hasValue = await Metrics.MeasureValueTask(
-                    () => enumerator.MoveNextAsync(cancellationToken),
-                    ReplicationMetrics.ReadsHistogram,
-                    ReplicationMetrics.ReadErrorsCount
-                )
-                .ConfigureAwait(false);
-
-            if (!hasValue) break;
-
-            var evt = enumerator.Current;
-            lastPosition = (long)(evt.OriginalPosition?.CommitPosition ?? 0);
-
-            _debugLog?.Debug(
-                "gRPC: Read event with id {Id} of type {Type} from {Stream} at {Position}",
-                evt.Event.EventId,
-                evt.Event.EventType,
-                evt.OriginalStreamId,
-                evt.OriginalPosition
+        try {
+            var read = _client.ReadAllAsync(
+                Direction.Forwards,
+                new(eventPosition, eventPosition),
+                userCredentials: callAuth.Credentials,
+                cancellationToken: cancellationToken
             );
 
-            BaseOriginalEvent originalEvent;
+            var enumerator = read.GetAsyncEnumerator(cancellationToken);
 
-            if (evt.Event.EventType == Predefined.MetadataEventType) {
-                if (Encoding.UTF8.GetString(evt.Event.Data.Span) == StreamDeletedBody) {
-                    originalEvent = MapStreamDeleted(evt, sequence++, activity);
+            do {
+                using var activity = new Activity("read");
+                activity.Start();
+
+                var hasValue = await Metrics.MeasureValueTask(
+                        () => enumerator.MoveNextAsync(cancellationToken),
+                        ReplicationMetrics.ReadsHistogram,
+                        ReplicationMetrics.ReadErrorsCount
+                    )
+                    .ConfigureAwait(false);
+
+                if (!accepted) {
+                    _auth.ReportAccepted(callAuth);
+                    accepted = true;
+                }
+
+                if (!hasValue) break;
+
+                var evt = enumerator.Current;
+                lastPosition = (long)(evt.OriginalPosition?.CommitPosition ?? 0);
+
+                _debugLog?.Debug(
+                    "gRPC: Read event with id {Id} of type {Type} from {Stream} at {Position}",
+                    evt.Event.EventId,
+                    evt.Event.EventType,
+                    evt.OriginalStreamId,
+                    evt.OriginalPosition
+                );
+
+                BaseOriginalEvent originalEvent;
+
+                if (evt.Event.EventType == Predefined.MetadataEventType) {
+                    if (Encoding.UTF8.GetString(evt.Event.Data.Span) == StreamDeletedBody) {
+                        originalEvent = MapStreamDeleted(evt, sequence++, activity);
+                    }
+                    else {
+                        originalEvent = MapMetadata(evt, sequence++, activity);
+                    }
+                }
+                else if (evt.Event.EventType[0] != '$') {
+                    originalEvent = Map(evt, sequence++, activity);
                 }
                 else {
-                    originalEvent = MapMetadata(evt, sequence++, activity);
+                    await next(MapIgnored(evt, sequence++, activity)).ConfigureAwait(false);
+
+                    continue;
                 }
-            }
-            else if (evt.Event.EventType[0] != '$') {
-                originalEvent = Map(evt, sequence++, activity);
-            }
-            else {
-                await next(MapIgnored(evt, sequence++, activity)).ConfigureAwait(false);
 
-                continue;
-            }
+                await next(originalEvent).ConfigureAwait(false);
+            } while (true);
+        } catch (Exception e) {
+            _auth.ReportFailure(callAuth, e);
 
-            await next(originalEvent).ConfigureAwait(false);
-        } while (true);
+            throw;
+        }
 
         _log.Info("Reached the end of the stream at {Position}", lastPosition);
     }
 
-    public async Task<long?> GetLastPosition(CancellationToken cancellationToken) {
-        var events = await _client
-            .ReadAllAsync(Direction.Backwards, Position.End, 1, cancellationToken: cancellationToken)
-            .ToArrayAsync(cancellationToken)
-            .ConfigureAwait(false);
+    public Task<long?> GetLastPosition(CancellationToken cancellationToken)
+        => _auth.Run(
+            async (a, c) => {
+                var events = await _client
+                    .ReadAllAsync(Direction.Backwards, Position.End, 1, userCredentials: a.Credentials, cancellationToken: c)
+                    .ToArrayAsync(c)
+                    .ConfigureAwait(false);
 
-        return (long?)events[0].OriginalPosition?.CommitPosition;
-    }
+                return (long?)events[0].OriginalPosition?.CommitPosition;
+            },
+            cancellationToken
+        );
 
     static IgnoredOriginalEvent MapIgnored(ResolvedEvent evt, int sequence, Activity activity)
         => new(
