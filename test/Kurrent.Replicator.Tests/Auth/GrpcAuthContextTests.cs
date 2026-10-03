@@ -18,6 +18,15 @@ public class GrpcAuthContextTests {
         _ctx    = new(_source, _shutdown.Token, _time, "sink");
     }
 
+    [Test]
+    public async Task CallAuth_ToString_never_prints_the_token() {
+        _source.Value = "tok-secret";
+        var auth = await _ctx.AcquireCredentials(default);
+        await Assert.That(auth.ToString()).DoesNotContain("tok-secret");
+        await Assert.That(auth.ToString()).Contains("Generation=");
+        await Assert.That(default(CallAuth).ToString()).IsEqualTo("CallAuth(none)");
+    }
+
     static NotAuthenticatedException Unauthenticated() => new("no", new RpcException(new Status(StatusCode.Unauthenticated, "no")));
 
     [Test]

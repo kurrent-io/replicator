@@ -1,7 +1,9 @@
 namespace Kurrent.Replicator.KurrentDb.Auth;
 
 /// <summary>Credentials for one gRPC call, plus the lease they were issued under. Both null without OAuth.</summary>
-public readonly record struct CallAuth(UserCredentials? Credentials, AccessTokenLease? Lease);
+public readonly record struct CallAuth(UserCredentials? Credentials, AccessTokenLease? Lease) {
+    public override string ToString() => Lease is { } lease ? $"CallAuth(Generation={lease.Generation})" : "CallAuth(none)";
+}
 
 public sealed class GrpcAuthContext {
     static ILog Log => LogProvider.GetLogger(typeof(GrpcAuthContext));
