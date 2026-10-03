@@ -135,7 +135,20 @@ public class TokenEndpointClientTests {
         var ex = await Assert.That(async () => await Client(Options()).RequestToken(default)).Throws<OAuthTokenException>();
         await Assert.That(ex!.Message).Contains("redirect");
         await Assert.That(_stub.Count).IsEqualTo(1);
-        await Assert.That(TokenEndpointClient.CreateDefaultHandler().AllowAutoRedirect).IsFalse();
+        using var handler = TokenEndpointClient.CreateDefaultHandler();
+        await Assert.That(handler.AllowAutoRedirect).IsFalse();
+        await Assert.That(handler.PooledConnectionLifetime).IsEqualTo(TimeSpan.FromMinutes(5)); // picks up IdP DNS changes
+    }
+
+    [Test]
+    public async Task Only_the_most_recent_tokens_are_retained_for_redaction() {
+        var i = 0;
+        _stub.Respond = (_, _) => StubTokenEndpoint.Json(HttpStatusCode.OK, StubTokenEndpoint.Token($"token-{i++}"));
+        var client = Client(Options());
+
+        for (var n = 0; n < 10; n++) await client.RequestToken(default);
+
+        await Assert.That(client.RetainedTokens).IsEquivalentTo(new[] { "token-6", "token-7", "token-8", "token-9" });
     }
 
     [Test]

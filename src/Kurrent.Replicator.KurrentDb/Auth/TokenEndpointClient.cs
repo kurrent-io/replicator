@@ -15,6 +15,7 @@ sealed class TokenEndpointClient : IDisposable {
 
     const           string   AssertionType = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
     static readonly TimeSpan MaxLifetime   = TimeSpan.FromSeconds(86400);
+    const           int      RetainedMax   = 4;
 
     static readonly HashSet<string> AllowedErrors = [
         "invalid_request", "invalid_client", "invalid_grant", "unauthorized_client",
@@ -26,7 +27,7 @@ sealed class TokenEndpointClient : IDisposable {
     readonly HttpClient      _http;
     readonly Uri             _endpoint;
     readonly string?         _secret;
-    readonly HashSet<string> _seenTokens = [];
+    readonly List<string>    _seenTokens = []; // most recent access tokens, oldest first, at most RetainedMax
     string?                  _lastAssertion;
     bool                     _clampWarned;
 
@@ -40,7 +41,12 @@ sealed class TokenEndpointClient : IDisposable {
 
     public string EndpointHost => _endpoint.Host;
 
-    public static SocketsHttpHandler CreateDefaultHandler() => new() { AllowAutoRedirect = false };
+    /// <summary>The access tokens currently retained for redaction, oldest first (for tests).</summary>
+    internal IReadOnlyList<string> RetainedTokens {
+        get { lock (_seenTokens) return _seenTokens.ToList(); }
+    }
+
+    public static SocketsHttpHandler CreateDefaultHandler() => new() { AllowAutoRedirect = false, PooledConnectionLifetime = TimeSpan.FromMinutes(5) };
 
     public async Task<TokenResponse> RequestToken(CancellationToken ct) {
         using var request = await BuildRequest(ct).ConfigureAwait(false);
@@ -113,9 +119,18 @@ sealed class TokenEndpointClient : IDisposable {
                 throw Invalid("token_type must be Bearer");
 
             var token = tokenEl.GetString()!;
-            lock (_seenTokens) _seenTokens.Add(token);
+            Retain(token);
 
             return new(token, Lifetime(root));
+        }
+    }
+
+    void Retain(string token) {
+        lock (_seenTokens) {
+            _seenTokens.Remove(token);
+            _seenTokens.Add(token);
+
+            if (_seenTokens.Count > RetainedMax) _seenTokens.RemoveAt(0);
         }
     }
 
