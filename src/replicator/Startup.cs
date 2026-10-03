@@ -3,6 +3,7 @@ using Kurrent.Replicator.EventStore;
 using Kurrent.Replicator.Js;
 using Kurrent.Replicator.Kafka;
 using Kurrent.Replicator.KurrentDb;
+using Kurrent.Replicator.KurrentDb.Auth;
 using Kurrent.Replicator.Mongo;
 using Kurrent.Replicator.Prepare;
 using Kurrent.Replicator.Shared;
@@ -25,8 +26,13 @@ static class Startup {
 
         services.AddSingleton<Factory>();
 
+        var readerAuth = AuthFor("reader", replicatorOptions.Reader);
+        var sinkAuth   = AuthFor("sink", replicatorOptions.Sink);
+
         services.AddSingleton<IConfigurator, TcpConfigurator>(_ => new(replicatorOptions.Reader.PageSize));
-        services.AddSingleton<IConfigurator, GrpcConfigurator>();
+        services.AddSingleton<IConfigurator, GrpcConfigurator>(
+            sp => new(readerAuth, sinkAuth, sp.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping)
+        );
         services.AddSingleton<IConfigurator, KafkaConfigurator>(_ => new(replicatorOptions.Sink.Router));
 
         services.AddSingleton(sp => sp.GetRequiredService<Factory>()
@@ -125,5 +131,14 @@ static class Startup {
                 _ => throw new ArgumentOutOfRangeException($"Unknown checkpoint seeder type: {settings.Type}")
             }
         );
+    }
+
+    static GrpcAuthOptions AuthFor(string side, EsdbSettings settings) {
+        var options = (settings.Auth ?? new GrpcAuthSettings()).ToOptions(side);
+
+        if (GrpcAuthOptionsValidator.ValidateProtocol(options, settings.Protocol) is { } error)
+            throw new InvalidOperationException($"Invalid {side} auth configuration: {error}");
+
+        return options;
     }
 }
