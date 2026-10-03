@@ -1,3 +1,4 @@
+using Kurrent.Replicator.KurrentDb.Auth;
 using Kurrent.Replicator.Shared.Contracts;
 using Kurrent.Replicator.Shared.Logging;
 using Kurrent.Replicator.Shared.Observe;
@@ -6,8 +7,10 @@ using StreamAcl = EventStore.Client.StreamAcl;
 
 namespace Kurrent.Replicator.KurrentDb;
 
-public class GrpcEventWriter(EventStoreClient client) : IEventWriter {
+public class GrpcEventWriter(EventStoreClient client, GrpcAuthContext auth) : IEventWriter {
     static readonly ILog Log = LogProvider.GetCurrentClassLogger();
+
+    public GrpcEventWriter(EventStoreClient client) : this(client, GrpcAuthContext.None) { }
 
     public Task Start() => Task.CompletedTask;
 
@@ -35,7 +38,17 @@ public class GrpcEventWriter(EventStoreClient client) : IEventWriter {
                     p.SourceLogPosition.EventPosition
                 );
 
-            var result = await client.AppendToStreamAsync(proposedEvent.EventDetails.Stream, StreamState.Any, [Map(p)], cancellationToken: cancellationToken).ConfigureAwait(false);
+            var result = await auth.Run(
+                    (a, c) => client.AppendToStreamAsync(
+                        proposedEvent.EventDetails.Stream,
+                        StreamState.Any,
+                        [Map(p)],
+                        userCredentials: a.Credentials,
+                        cancellationToken: c
+                    ),
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
 
             return (long)result.LogPosition.CommitPosition;
         }
@@ -44,7 +57,11 @@ public class GrpcEventWriter(EventStoreClient client) : IEventWriter {
             if (Log.IsDebugEnabled())
                 Log.Debug("Deleting stream {Stream}", stream);
 
-            var result = await client.DeleteAsync(stream, StreamState.Any, cancellationToken: cancellationToken).ConfigureAwait(false);
+            var result = await auth.Run(
+                    (a, c) => client.DeleteAsync(stream, StreamState.Any, userCredentials: a.Credentials, cancellationToken: c),
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
 
             return (long)result.LogPosition.CommitPosition;
         }
@@ -53,27 +70,31 @@ public class GrpcEventWriter(EventStoreClient client) : IEventWriter {
             if (Log.IsDebugEnabled())
                 Log.Debug("Setting meta for {Stream} to {Meta}", meta.EventDetails.Stream, meta);
 
-            var result = await client.SetStreamMetadataAsync(
-                    meta.EventDetails.Stream,
-                    StreamState.Any,
-                    new(
-                        meta.Data.MaxCount,
-                        meta.Data.MaxAge,
-                        ValueOrNull(meta.Data.TruncateBefore, x => new StreamPosition((ulong)x!)),
-                        meta.Data.CacheControl,
-                        ValueOrNull(
-                            meta.Data.StreamAcl,
-                            x =>
-                                new StreamAcl(
-                                    x.ReadRoles,
-                                    x.WriteRoles,
-                                    x.DeleteRoles,
-                                    x.MetaReadRoles,
-                                    x.MetaWriteRoles
-                                )
-                        )
+            var result = await auth.Run(
+                    (a, c) => client.SetStreamMetadataAsync(
+                        meta.EventDetails.Stream,
+                        StreamState.Any,
+                        new(
+                            meta.Data.MaxCount,
+                            meta.Data.MaxAge,
+                            ValueOrNull(meta.Data.TruncateBefore, x => new StreamPosition((ulong)x!)),
+                            meta.Data.CacheControl,
+                            ValueOrNull(
+                                meta.Data.StreamAcl,
+                                x =>
+                                    new StreamAcl(
+                                        x.ReadRoles,
+                                        x.WriteRoles,
+                                        x.DeleteRoles,
+                                        x.MetaReadRoles,
+                                        x.MetaWriteRoles
+                                    )
+                            )
+                        ),
+                        userCredentials: a.Credentials,
+                        cancellationToken: c
                     ),
-                    cancellationToken: cancellationToken
+                    cancellationToken
                 )
                 .ConfigureAwait(false);
 
