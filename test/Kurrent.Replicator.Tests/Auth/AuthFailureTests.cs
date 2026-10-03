@@ -38,4 +38,26 @@ public class AuthFailureTests {
         var agg = new AggregateException(new AggregateException(new AggregateException(new InvalidOperationException())));
         await Assert.That(AuthFailure.IsTokenFailure(agg)).IsFalse();
     }
+
+    [Test]
+    public async Task Describe_returns_the_oauth_exception_message_verbatim() {
+        await Assert.That(AuthFailure.Describe(new OAuthTokenException("token source is quarantined"))).IsEqualTo("token source is quarantined");
+    }
+
+    [Test]
+    public async Task Describe_never_echoes_server_supplied_status_detail() {
+        var rpc = Rpc(StatusCode.Unauthenticated); // status detail is "x", not secret, but Describe must not use it at all
+        await Assert.That(AuthFailure.Describe(rpc)).IsEqualTo("KurrentDB rejected the access token (Unauthenticated)");
+        await Assert.That(AuthFailure.Describe(rpc)).DoesNotContain("x");
+
+        var notAuth = new NotAuthenticatedException("Bearer SECRET-XYZ leaked here", rpc);
+        await Assert.That(AuthFailure.Describe(notAuth)).IsEqualTo("KurrentDB rejected the access token (Unauthenticated)");
+        await Assert.That(AuthFailure.Describe(notAuth)).DoesNotContain("SECRET-XYZ");
+    }
+
+    [Test]
+    public async Task Describe_falls_back_to_exception_type_and_status_code() {
+        await Assert.That(AuthFailure.Describe(new InvalidOperationException("secret detail"))).IsEqualTo("InvalidOperationException");
+        await Assert.That(AuthFailure.Describe(Rpc(StatusCode.Unavailable))).IsEqualTo("RpcException (Unavailable)");
+    }
 }

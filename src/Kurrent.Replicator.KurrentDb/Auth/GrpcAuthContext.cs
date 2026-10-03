@@ -67,7 +67,7 @@ public sealed class GrpcAuthContext {
             } catch (Exception e) when (AuthFailure.IsTokenFailure(e) && !linked.IsCancellationRequested) {
                 ReportFailure(auth, e);
 
-                if (_warn.ShouldLog()) Log.Warn("{Side}: gRPC call failed with a token error ({Error}); retrying with backoff", Side, e.Message);
+                if (_warn.ShouldLog()) Log.Warn("{Side}: gRPC call failed with a token error ({Error}); retrying with backoff", Side, AuthFailure.Describe(e));
 
                 await Task.Delay(TokenGate.Backoff(failures++), Time, linked.Token).ConfigureAwait(false);
             }

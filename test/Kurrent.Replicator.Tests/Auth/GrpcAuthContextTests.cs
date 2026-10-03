@@ -7,6 +7,31 @@ using TUnit.Assertions.AssertConditions.Throws;
 
 namespace Kurrent.Replicator.Tests.Auth;
 
+[NotInParallel("global-logger")]
+public class GrpcAuthContextLoggingTests {
+    [Test]
+    public async Task Run_never_logs_the_servers_status_detail_on_a_token_failure() {
+        using var logs     = new LogCapture();
+        var       time     = new FakeTimeProvider();
+        using var shutdown = new CancellationTokenSource();
+        var       source   = new ControllableTokenSource(time) { Value = "A" };
+        var       ctx      = new GrpcAuthContext(source, shutdown.Token, time, $"sink-{Guid.NewGuid():N}");
+
+        var rpc = new RpcException(new Status(StatusCode.Unauthenticated, "Bearer SECRET-XYZ"));
+
+        var calls = 0;
+        var run = ctx.Run((_, _) => {
+            calls++;
+            if (calls == 1) throw rpc;
+            return Task.FromResult(1);
+        }, default);
+
+        await TimeDriver.Drive(run, time);
+
+        await Assert.That(logs.AllText).DoesNotContain("SECRET-XYZ");
+    }
+}
+
 public class GrpcAuthContextTests {
     readonly FakeTimeProvider        _time     = new();
     readonly CancellationTokenSource _shutdown = new();

@@ -157,7 +157,10 @@ class Realtime {
             }
         }
 
-        Log.Warn(exception, "Realtime subscription dropped: {Reason}", reason);
+        if (exception != null && AuthFailure.IsTokenFailure(exception))
+            Log.Warn("Realtime subscription dropped: {Reason} ({Error})", reason, AuthFailure.Describe(exception));
+        else
+            Log.Warn(exception, "Realtime subscription dropped: {Reason}", reason);
 
         if (!resubscribe) return;
 

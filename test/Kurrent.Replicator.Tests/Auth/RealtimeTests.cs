@@ -298,3 +298,48 @@ public class RealtimeTests {
         await Assert.That(metaReads).IsEqualTo(0);
     }
 }
+
+[NotInParallel("global-logger")]
+public class RealtimeLoggingTests {
+    sealed class DummyDisposable : IDisposable {
+        public void Dispose() { }
+    }
+
+    [Test]
+    public async Task Drop_of_a_token_failure_never_logs_the_servers_status_detail() {
+        using var logs     = new LogCapture();
+        var       time     = new FakeTimeProvider();
+        using var shutdown = new CancellationTokenSource();
+        var       source   = new ControllableTokenSource(time) { Value = "A" };
+        var       auth     = new GrpcAuthContext(source, shutdown.Token, time, "reader");
+        var       cache    = new StreamMetaCache(failClosedOnAuthErrors: true);
+
+        TaskCompletionSource<IDisposable>?               result    = null;
+        Action<SubscriptionDroppedReason, Exception?>?   onDropped = null;
+
+        var realtime = new Realtime(
+            (_, dropped, _, _) => {
+                var tcs = new TaskCompletionSource<IDisposable>(TaskCreationOptions.RunContinuationsAsynchronously);
+                result    = tcs;
+                onDropped = dropped;
+
+                return tcs.Task;
+            },
+            cache,
+            auth
+        );
+
+        var start = realtime.Start(default);
+        await TimeDriver.Until(() => result != null, time);
+        result!.SetResult(new DummyDisposable());
+        await TimeDriver.Drive(start, time);
+
+        var rpc = new RpcException(new Status(StatusCode.Unauthenticated, "Bearer SECRET-XYZ"));
+        var ex  = new NotAuthenticatedException("x", rpc);
+
+        onDropped!(SubscriptionDroppedReason.ServerError, ex);
+        await Task.Delay(20); // give the warning log a moment to land
+
+        await Assert.That(logs.AllText).DoesNotContain("SECRET-XYZ");
+    }
+}
