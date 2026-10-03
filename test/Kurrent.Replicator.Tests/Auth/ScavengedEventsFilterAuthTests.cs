@@ -84,6 +84,40 @@ public class ScavengedEventsFilterAuthTests {
         // EventStore.Client issues server-feature discovery RPCs per client instance using DefaultCredentials
         // (the sentinel), which fall back through GrpcAuthentication.Apply - observed 2 here (controller ruling:
         // assert the observed discovery-only count, not 0, and keep the per-RPC Authorization assertions above).
+        // If the metadata Read itself fell back to DefaultCredentials, this count would be higher.
         await Assert.That(usage.Count).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task Stream_size_read_carries_per_call_bearer() {
+        // The fallback hook uses a different source, so a Read that fell back to DefaultCredentials would carry
+        // "Bearer FALLBACK" instead of the per-call "Bearer A".
+        var handler  = new FakeKurrentDbHandler();
+        var fallback = new ControllableTokenSource(_time) { Value = "FALLBACK" };
+        var client   = FakeKurrentDbHandler.Client(handler, configure: s => GrpcAuthentication.Apply(s, fallback));
+        var metaAuth = new List<CallAuth>();
+        var sizeAuth = new List<CallAuth>();
+
+        var filter = new ScavengedEventsFilter(
+            (_, a, _) => {
+                metaAuth.Add(a);
+
+                return Task.FromResult(new StreamMeta(false, null, 10, 0)); // MaxCount set: OverMaxCount reads the stream size
+            },
+            (s, a, c) => {
+                sizeAuth.Add(a);
+
+                return client.GetStreamSize(s, a.Credentials, c); // same as the EventStoreClient-based ctor
+            },
+            new StreamMetaCache(true),
+            _auth
+        );
+
+        // the fake server answers the size Read with Unavailable, which is not an auth error and propagates
+        await Assert.That(async () => await filter.Filter(TestEvents.Original("s", 0))).ThrowsException();
+
+        await Assert.That(metaAuth.Single().Lease!.Value.Value).IsEqualTo("A");
+        await Assert.That(sizeAuth.Single().Lease!.Value.Value).IsEqualTo("A");
+        await Assert.That(handler.AuthorizationsFor(FakeKurrentDbHandler.ReadPath).Single()).IsEqualTo("Bearer A");
     }
 }
