@@ -17,7 +17,7 @@ Replicator is a headless service, so it must authenticate as a machine identity 
    - **Client credentials** — Replicator obtains and refreshes tokens itself (RFC 6749 §4.4), authenticating to the token endpoint with a client secret or a client assertion (RFC 7523; covers Entra workload identity federation).
    - **Token file** — an external process keeps a valid access token in a file; Replicator reads it.
 4. Reader (source) and sink (target) are configured completely independently. Any combination is valid: basic + OAuth, OAuth + basic, OAuth + OAuth with different providers/clients, basic + basic.
-5. Tokens are refreshed before expiry without restarting Replicator, including across long-running reads and the realtime subscription.
+5. Replication continues across token expiry without restarting Replicator. Every new gRPC call carries a current token. A long-running call (the `$all` read and the realtime subscription) is authorized by KurrentDB when it starts. Replicator relies on that server-side contract: if the server keeps the stream open past the token's expiry, the stream simply continues, which is correct and needs no refresh. If the server ends it, Replicator restarts it with a fresh token. Either outcome must leave replication running with no lost or duplicated events beyond today's at-least-once semantics.
 6. Secrets and tokens are never logged.
 
 ## Non-goals
@@ -243,7 +243,12 @@ The loop has no attempt limit: a persistent rejection (for example a wrong audie
 - `Start()` (called from `ReadEvents`) becomes `EnsureSubscribed(cancellationToken)`. Concurrent foreground and recovery callers share one attempt, and there is never more than one live subscription.
 - `Realtime` gets an internal constructor taking a subscribe delegate `Func<CallAuth, Action<SubscriptionDroppedReason, Exception?>, CancellationToken, Task<StreamSubscription>>`, `GrpcAuthContext` and `TimeProvider`, so all of this, including drop timing, is unit-testable without a server.
 
-**Long-lived calls and token expiry.** Credentials are evaluated when a call starts. If KurrentDB terminates `ReadAllAsync` or the subscription when the token expires, the paths above recover with a fresh token. Whether it does is confirmed in the manual end-to-end test. If it causes frequent restarts, proactively recycling the read before expiry is a follow-up.
+**Long-lived calls and token expiry.** Credentials are evaluated when a call starts, and gRPC has no way to swap the header of an open stream. There are two possible server behaviours, and both are handled:
+
+- **Stream kept open past expiry:** the call stays authorized as it was at start. Replication continues. Nothing to do: the token is not re-sent on that stream, and every other call (writes, metadata reads, `GetLastPosition`, a later restart) uses a current token. Proactive recycling would only add restarts and is not done.
+- **Stream ended at expiry** (any status, typically `Unauthenticated`): the `$all` read takes the reader restart path (checkpointed, at-least-once as today), and the subscription takes the `HandleDrop` path. Both acquire a fresh token.
+
+The manual end-to-end test records which behaviour KurrentDB has, so the docs can state it. No design change depends on the answer.
 
 ### Validation (startup, fail fast)
 
@@ -329,7 +334,12 @@ Unit tests (TUnit, `test/Kurrent.Replicator.Tests/Auth/`), using a stub `HttpMes
 
 Existing container-based tests keep running unchanged (`connectionString` default).
 
-Manual end-to-end (documented in the PR, not automated — the KurrentDB OAuth plugin needs a licence and a real IdP): KurrentDB with OAuth + Entra ID as sink, basic-auth KurrentDB/EventStoreDB as reader; replicate, run past a token expiry, confirm continued replication and observe whether the subscription/read is terminated at expiry.
+Manual end-to-end (documented in the PR, not automated — the KurrentDB OAuth plugin needs a licence and a real IdP). Use an Entra ID app with a short access-token lifetime (token lifetime policy, or a Keycloak realm with a 5-minute lifetime for the generic case), and a continuous writer appending to the source throughout:
+
+1. **OAuth sink, basic reader:** replicate for at least 3 token lifetimes. Expected: the sink log shows token refreshes with no write failures, and the target event count tracks the source.
+2. **OAuth reader, basic sink:** replicate for at least 3 token lifetimes without interruption, covering both the `$all` read and the realtime subscription. Expected, and recorded in the PR: either (a) no reader restart or subscription drop across expiries, and events keep flowing; or (b) a reader restart and/or subscription drop at each expiry, followed by resumption from the checkpoint with a fresh token. In both cases the target ends with every source event, with no gap.
+3. **OAuth on both sides with different client IDs** (`oauthClientCredentials` on the reader, `oauthTokenFile` on the sink): replicate past expiry, then rotate the sink token file and verify the switch to the new token.
+4. **Token endpoint outage:** block the endpoint for longer than a token lifetime, then restore it. Expected: warnings, paused progress, automatic resumption, no restart of the process.
 
 ## Risks
 
