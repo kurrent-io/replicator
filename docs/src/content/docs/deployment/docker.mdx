@@ -54,6 +54,6 @@ services:
       REPLICATOR_SINK_AUTH_SCOPE: api://kurrentdb/.default
 ```
 
-Replicator prints the environment variables it loads at startup, with connection strings and all `auth` values except `type` masked as `***`. See [Authentication](../authentication/) for every option.
+Replicator prints the environment variables it loads at startup, with connection strings, all `auth` values except `type`, and any value containing credentials (a URI with user info such as `mongodb://user:pass@host`, or `DefaultUserCredentials=`) masked as `***`. See [Authentication](../authentication/) for every option.
 
 
