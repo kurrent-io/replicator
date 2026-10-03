@@ -18,6 +18,9 @@ public static class GrpcAuthentication {
         var usage = new FallbackUsage();
         settings.DefaultCredentials = Sentinel;
 
+        // The client's own server-feature discovery call (one per client instance) carries DefaultCredentials and
+        // so goes through this fallback. It never reports acceptance or rejection, so if it takes the probe lease of
+        // a previously rejected token, that lease is held until it self-heals through the 60s lease expiry.
         settings.OperationOptions.GetAuthenticationHeaderValue = async (credentials, ct) => {
             if (!ReferenceEquals(credentials, Sentinel)) return credentials.ToString();
 
