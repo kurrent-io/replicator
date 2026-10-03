@@ -21,12 +21,24 @@ replicator:
   reader:
     connectionString:
     protocol: tcp
+    # auth:                       # optional, gRPC only. See docs: deployment/authentication
+    #   type: oauthClientCredentials
+    #   tokenEndpoint: https://login.microsoftonline.com/<tenant>/oauth2/v2.0/token
+    #   clientId: <client-id>
+    #   clientSecretFile: /var/run/secrets/replicator/client-secret   # do not put clientSecret here
+    #   scope: api://<kurrentdb-app>/.default
   sink:
     connectionString:
     protocol: grpc
     partitionCount: 1
     partitioner:
     bufferSize: 1000
+    # auth:                       # optional, gRPC only. See docs: deployment/authentication
+    #   type: oauthClientCredentials
+    #   tokenEndpoint: https://login.microsoftonline.com/<tenant>/oauth2/v2.0/token
+    #   clientId: <client-id>
+    #   clientSecretFile: /var/run/secrets/replicator/client-secret   # do not put clientSecret here
+    #   scope: api://<kurrentdb-app>/.default
   scavenge: true
   filters: []
   transform: null
@@ -36,3 +48,16 @@ replicator:
     checkpointAfter: 1000
 #  restartOnFailure: false
 #  runContinuously: true
+
+# Service account for the pod (e.g. one federated with Azure Workload Identity).
+serviceAccountName: ""
+# Extra labels on the pod template, e.g. azure.workload.identity/use: "true".
+podLabels: {}
+# Extra environment variables. Use these (not replicator.*.auth in this file) for secrets, e.g.
+# - name: REPLICATOR_SINK_AUTH_CLIENTSECRET
+#   valueFrom: { secretKeyRef: { name: replicator-oauth, key: client-secret } }
+extraEnv: []
+extraEnvFrom: []
+# Extra volumes and mounts, e.g. a Secret holding clientSecretFile or a token file written by a sidecar.
+extraVolumes: []
+extraVolumeMounts: []
