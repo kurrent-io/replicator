@@ -101,7 +101,7 @@ class Realtime {
         IDisposable subscription;
 
         try {
-            subscription = await _subscribe(HandleEvent, (reason, ex) => HandleDrop(attempt, reason, ex), auth, ct).ConfigureAwait(false);
+            subscription = await _subscribe(re => HandleEvent(attempt, re), (reason, ex) => HandleDrop(attempt, reason, ex), auth, ct).ConfigureAwait(false);
         } catch {
             lock (_lock) {
                 if (ReferenceEquals(_pending, attempt)) _pending = null;
@@ -171,17 +171,28 @@ class Realtime {
             );
     }
 
-    Task HandleEvent(ResolvedEvent re) {
+    // Events are bound to the attempt that delivered them. A superseded attempt's in-flight callback could otherwise
+    // write pre-gap data into the cache after a newer attempt's MarkLive cleared it. The current-attempt check and the
+    // cache write happen under the same lock that publishes an attempt and calls MarkLive, so the two cannot
+    // interleave: either the write lands before the newer attempt's MarkLive (and is cleared by it) or the attempt is
+    // no longer current when the write would happen (and it is skipped).
+    Task HandleEvent(Attempt attempt, ResolvedEvent re) {
         if (IsSystemEvent())
             return Task.CompletedTask;
 
         if (IsMetadataUpdate()) {
-            var stream = re.OriginalStreamId[2..];
-            var meta   = JsonSerializer.Deserialize<StreamMetadata>(re.Event.Data.Span, MetaSerialization.StreamMetadataJsonSerializerOptions);
-            _cache.UpdateStreamMeta(stream, meta, re.OriginalEventNumber.ToInt64());
+            var stream  = re.OriginalStreamId[2..];
+            var meta    = JsonSerializer.Deserialize<StreamMetadata>(re.Event.Data.Span, MetaSerialization.StreamMetadataJsonSerializerOptions);
+            var version = re.OriginalEventNumber.ToInt64();
+
+            lock (_lock) {
+                if (IsCurrent(attempt)) _cache.UpdateStreamMeta(stream, meta, version);
+            }
         }
         else {
-            _cache.UpdateStreamLastEventNumber(re.OriginalStreamId, re.OriginalEventNumber.ToInt64());
+            lock (_lock) {
+                if (IsCurrent(attempt)) _cache.UpdateStreamLastEventNumber(re.OriginalStreamId, re.OriginalEventNumber.ToInt64());
+            }
         }
 
         return Task.CompletedTask;
@@ -190,4 +201,7 @@ class Realtime {
 
         bool IsMetadataUpdate() => re.Event.EventType == Predefined.MetadataEventType;
     }
+
+    // Caller holds _lock.
+    bool IsCurrent(Attempt attempt) => !attempt.Dropped && (ReferenceEquals(attempt, _pending) || ReferenceEquals(attempt, _published));
 }

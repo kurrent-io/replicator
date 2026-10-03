@@ -64,6 +64,20 @@ public class RealtimeTests {
         await TimeDriver.Drive(start, _time);
     }
 
+    static ResolvedEvent MetadataEvent(string stream, string json, ulong eventNumber) {
+        var metadata = new Dictionary<string, string> {
+            ["type"]         = "$metadata",
+            ["created"]      = DateTime.UtcNow.Ticks.ToString(),
+            ["content-type"] = "application/json"
+        };
+        var record = new EventRecord(
+            $"$${stream}", Uuid.NewUuid(), new StreamPosition(eventNumber), Position.Start, metadata,
+            System.Text.Encoding.UTF8.GetBytes(json), ReadOnlyMemory<byte>.Empty
+        );
+
+        return new ResolvedEvent(record, null, null);
+    }
+
     static NotAuthenticatedException Unauthenticated() => new("x", new RpcException(new Status(StatusCode.Unauthenticated, "x")));
 
     [Test]
@@ -242,5 +256,45 @@ public class RealtimeTests {
         await TimeDriver.Until(() => _realtime.IsPublished, _time);
         await Assert.That(_cache.IsLive).IsTrue();
         await Assert.That(_calls.Count).IsEqualTo(2);
+    }
+    [Test]
+    public async Task Event_from_a_superseded_attempt_does_not_refill_the_cache() {
+        var serverMeta = new StreamMeta(false, null, null, 0);
+        var metaReads  = 0;
+        var filter = new ScavengedEventsFilter(
+            (_, _, _) => { metaReads++; return Task.FromResult(serverMeta); },
+            (_, _, _) => Task.FromResult(new StreamSize(10)),
+            _cache,
+            new GrpcAuthContext(_source, _shutdown.Token, _time, "reader")
+        );
+
+        await Publish(0);                                               // attempt A published
+        Nth(0).OnDropped(SubscriptionDroppedReason.ServerError, null);  // A dropped
+        (await WaitForCall(1)).Succeed();                               // attempt B published: MarkLive
+        await TimeDriver.Until(() => _realtime.IsPublished, _time);
+
+        // A's in-flight callback delivers pre-gap metadata after B went live
+        await Nth(0).OnEvent(MetadataEvent("s", "{\"$maxCount\":1}", 3));
+
+        // the stale entry must not be trusted: the filter fetches fresh metadata (no maxCount) and keeps the event
+        await Assert.That(await filter.Filter(TestEvents.Original("s", 5))).IsTrue();
+        await Assert.That(metaReads).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task Event_from_the_published_attempt_updates_the_cache() {
+        var metaReads = 0;
+        var filter = new ScavengedEventsFilter(
+            (_, _, _) => { metaReads++; return Task.FromResult(new StreamMeta(false, null, null, 0)); },
+            (_, _, _) => Task.FromResult(new StreamSize(10)),
+            _cache,
+            new GrpcAuthContext(_source, _shutdown.Token, _time, "reader")
+        );
+
+        await Publish(0);
+        await Nth(0).OnEvent(MetadataEvent("s", "{\"$maxCount\":1}", 3));
+
+        await Assert.That(await filter.Filter(TestEvents.Original("s", 5))).IsFalse(); // cached maxCount=1 applies
+        await Assert.That(metaReads).IsEqualTo(0);
     }
 }
