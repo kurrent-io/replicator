@@ -1,7 +1,7 @@
 # OAuth authentication for KurrentDB gRPC reader and sink
 
 Date: 2026-10-03
-Status: Draft (for review)
+Status: Reviewed (Codex spec-review flow, clean at round 19)
 
 ## Problem
 
@@ -47,7 +47,7 @@ No gRPC interceptor or custom `HttpMessageHandler` is needed, and the client's T
 
 `CallCredentials` are only sent over TLS channels by Grpc.Net.Client. OAuth therefore requires `tls=true` (the default); see Validation.
 
-Existing call sites (`GrpcEventReader`, `GrpcEventWriter`, `Realtime`, `ConnectionExtensions`, `ScavengedEventsFilter`) pass no per-call credentials, so they all fall back to `DefaultCredentials` and pick up the token automatically.
+Existing call sites (`GrpcEventReader`, `GrpcEventWriter`, `Realtime`, `ConnectionExtensions`, `ScavengedEventsFilter`) pass no per-call credentials today. This work changes every one of them to pass per-call credentials. The fallback hook only protects against a call site being missed.
 
 ## Configuration
 
@@ -123,7 +123,7 @@ All new code in `src/Kurrent.Replicator.KurrentDb/Auth/`. Each unit has a single
 | `TokenFileSource` | Reads and caches the token file; reloads on interval or on `Invalidate`. Takes a `TimeProvider`. |
 | `TokenGate` | `WaitForToken(IAccessTokenSource, CancellationToken)`: retries token acquisition with capped exponential backoff and rate-limited logging until it succeeds or is cancelled. Takes a `TimeProvider` for testing. |
 | `GrpcAuthContext` | Per-side handle passed to reader/writer code: the side's `IAccessTokenSource?` plus the application shutdown token. `GrpcAuthContext.None` is the no-auth instance. Two operations: `ValueTask<CallAuth> AcquireCredentials(ct)` runs `TokenGate.WaitForToken` with `ct` linked to the shutdown token and returns `CallAuth(UserCredentials? Credentials, AccessTokenLease? Lease)` (both `null` without OAuth, so the client keeps using the connection string's credentials exactly as today), plus `ReportAccepted(CallAuth)` / `ReportFailure(CallAuth, Exception)` for long-lived calls that cannot use `Run`; `Run<T>(Func<CallAuth, CancellationToken, Task<T>> call, ct)` executes one bounded gRPC operation with token recovery (see "Token-aware calls"). Every call site passes `callAuth.Credentials` as the client method's `userCredentials` argument. Call sites that must remember which lease a result belongs to (the subscription) keep the `CallAuth` they were handed. |
-| `AuthFailure` | `static bool IsTokenFailure(Exception)`: true if the exception chain (`InnerException`, `AggregateException` members, `RpcException.Status.DebugException`) contains `OAuthTokenException`, or an `RpcException` with `StatusCode.Unauthenticated` (token missing, expired or rejected). `PermissionDenied` is not a token failure (retrying with a new token does not help), and is handled separately where it matters (scavenge filter). |
+| `AuthFailure` | `static bool IsTokenFailure(Exception)`: true if the exception chain (`InnerException`, `AggregateException` members, `RpcException.Status.DebugException`) contains `OAuthTokenException`, the client's `NotAuthenticatedException` (which it converts `Unauthenticated` into), or an `RpcException` with `StatusCode.Unauthenticated` (token missing, expired or rejected). A companion `IsPermissionDenied` matches the client's `AccessDeniedException` or `RpcException` `PermissionDenied`. `PermissionDenied` is not a token failure (retrying with a new token does not help), and is handled separately where it matters (scavenge filter). |
 | `GrpcAuthentication` | `static void Apply(EventStoreClientSettings settings, IAccessTokenSource source)` — sets the sentinel `DefaultCredentials` and replaces `OperationOptions.GetAuthenticationHeaderValue` with the fallback hook (sentinel → fetch from source; anything else → `credentials.ToString()`). Also `IAccessTokenSource? Create(GrpcAuthOptions)` factory. |
 
 ### Wiring
@@ -248,7 +248,7 @@ The loop has no attempt limit: a persistent rejection (for example a wrong audie
   - The resubscription starts from `FromAll.End`, as today. No position replay or catch-up barrier is needed, because nothing cached before or during the gap survives.
   - Before the first subscription the cache starts not-live, and the first successful subscribe marks it live. `ReadEvents` already awaits `Start()` before reading, so initial behaviour is unchanged.
 - `Start()` (called from `ReadEvents`) becomes `EnsureSubscribed(cancellationToken)`. Concurrent foreground and recovery callers share one attempt, and there is never more than one live subscription.
-- `Realtime` gets an internal constructor taking a subscribe delegate `Func<Func<ResolvedEvent, Task>, Action<SubscriptionDroppedReason, Exception?>, CallAuth, CancellationToken, Task<StreamSubscription>>` (event handler, drop callback, auth), `GrpcAuthContext` and `TimeProvider`, so all of this, including drop timing and cache state, is unit-testable without a server.
+- `Realtime` gets an internal constructor taking a subscribe delegate `Func<Func<ResolvedEvent, Task>, Action<SubscriptionDroppedReason, Exception?>, CallAuth, CancellationToken, Task<IDisposable>>` (the production delegate returns the `StreamSubscription`, which is `IDisposable`; `StreamSubscription` itself cannot be constructed in tests) (event handler, drop callback, auth), `GrpcAuthContext` and `TimeProvider`, so all of this, including drop timing and cache state, is unit-testable without a server.
 
 **Long-lived calls and token expiry.** Credentials are evaluated when a call starts, and gRPC has no way to swap the header of an open stream. There are two possible server behaviours, and both are handled:
 
