@@ -293,6 +293,8 @@ All new values default to empty, so existing installs render identically.
   3. Generic provider (Keycloak/Okta) with `additionalParameters.audience`, and a token-file example.
 - `deployment/configuration.mdx`: add the `auth.*` rows to the options table and link to the new page.
 - `features/readers.mdx` / `features/sinks.mdx`: one-line note that gRPC supports OAuth.
+- `deployment/kubernetes.mdx`: add the new Helm values (`serviceAccountName`, `podLabels`, `extraEnv`, `extraEnvFrom`, `extraVolumes`, `extraVolumeMounts`, `replicator.reader.auth.*`, `replicator.sink.auth.*`) to the options table, plus an "OAuth authentication" subsection with a complete `values.yml` that injects the client secret from a Kubernetes Secret via `extraEnv`, and a Workload Identity variant.
+- `deployment/docker.mdx`: an "OAuth authentication" subsection showing the `REPLICATOR_<SIDE>_AUTH_*` environment variables in the Docker Compose example, with the secret coming from an env file or Docker secret file (`clientSecretFile`).
 - `CHANGELOG.md` entry.
 
 Required permissions are called out: reading `$all`, reading stream metadata, writing to arbitrary streams, setting metadata and deleting streams require the token's role claim to map to `$admins` (or ACLs granting equivalent rights) on each cluster.

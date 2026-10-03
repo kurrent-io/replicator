@@ -4830,6 +4830,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Modify: `docs/src/content/docs/deployment/configuration.mdx`
 - Modify: `docs/src/content/docs/features/readers.mdx`
 - Modify: `docs/src/content/docs/features/sinks.mdx`
+- Modify: `docs/src/content/docs/deployment/kubernetes.mdx`
+- Modify: `docs/src/content/docs/deployment/docker.mdx`
 - Modify: `CHANGELOG.md`
 
 - [ ] **Step 1: Write the authentication page**
@@ -4979,6 +4981,101 @@ The gRPC reader can authenticate with OAuth 2.0 access tokens instead of basic c
 
 (Use "gRPC sink" in `sinks.mdx`.)
 
+- [ ] **Step 3a: Kubernetes page — Helm values and an OAuth example**
+
+In `docs/src/content/docs/deployment/kubernetes.mdx`, add these rows to the "Available options" table (after `replicator.transform.bufferSize`):
+
+```markdown
+| `replicator.reader.auth.*`           | Reader [authentication](../authentication/) (gRPC only), e.g. `type: oauthClientCredentials`   | nil     |
+| `replicator.sink.auth.*`             | Sink [authentication](../authentication/) (gRPC only), configured independently of the reader  | nil     |
+| `serviceAccountName`                 | Service account for the pod (e.g. federated for Azure Workload Identity)                        | `""`    |
+| `podLabels`                          | Extra pod labels, e.g. `azure.workload.identity/use: "true"`                                    | `{}`    |
+| `extraEnv`                           | Extra container environment variables (use for secrets such as `REPLICATOR_SINK_AUTH_CLIENTSECRET`) | `[]` |
+| `extraEnvFrom`                       | Extra `envFrom` sources (Secrets, ConfigMaps)                                                   | `[]`    |
+| `extraVolumes`                       | Extra pod volumes (e.g. a Secret with a client secret or token file)                            | `[]`    |
+| `extraVolumeMounts`                  | Extra container volume mounts                                                                   | `[]`    |
+```
+
+Then add a subsection after "Provide configuration":
+
+````mdx
+### OAuth authentication
+
+When a cluster uses OAuth (for example with Microsoft Entra ID), configure that side's `auth` section and inject the secret from a Kubernetes Secret. Never put `clientSecret` in `values.yml`: the `replicator` block is rendered into a ConfigMap.
+
+```bash
+kubectl create secret generic replicator-oauth --from-literal=client-secret='<secret>'
+```
+
+```yaml
+replicator:
+  reader:
+    protocol: grpc
+    connectionString: "esdb://admin:changeit@source.example.com:2113?tls=true"
+  sink:
+    protocol: grpc
+    connectionString: "esdb://[cloudclusterid].mesdb.eventstore.cloud:2113?tls=true"
+    auth:
+      type: oauthClientCredentials
+      tokenEndpoint: "https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token"
+      clientId: "<replicator-app-client-id>"
+      clientSecretFile: /var/run/secrets/replicator/client-secret
+      scope: "api://kurrentdb/.default"
+extraVolumes:
+  - name: replicator-oauth
+    secret:
+      secretName: replicator-oauth
+extraVolumeMounts:
+  - name: replicator-oauth
+    mountPath: /var/run/secrets/replicator
+    readOnly: true
+```
+
+Alternatively, pass the secret as an environment variable instead of a file:
+
+```yaml
+extraEnv:
+  - name: REPLICATOR_SINK_AUTH_CLIENTSECRET
+    valueFrom:
+      secretKeyRef:
+        name: replicator-oauth
+        key: client-secret
+```
+
+With Azure Workload Identity there is no secret at all. Set `serviceAccountName` to the federated service account, add the `azure.workload.identity/use: "true"` pod label, and use `clientAssertionFile: /var/run/secrets/azure/tokens/azure-identity-token` instead of `clientSecretFile`. See [Authentication](../authentication/) for every option.
+````
+
+- [ ] **Step 3b: Docker page — environment variables**
+
+In `docs/src/content/docs/deployment/docker.mdx`, add a subsection at the end:
+
+````mdx
+## OAuth authentication
+
+Every `auth` option can be set with an environment variable named `REPLICATOR_<SIDE>_AUTH_<OPTION>`. For example, to authenticate the sink with OAuth client credentials while the reader keeps using basic credentials from its connection string:
+
+```yaml
+services:
+  replicator:
+    image: docker.kurrent.io/kurrent-latest/replicator:latest
+    environment:
+      REPLICATOR_SINK_AUTH_TYPE: oauthClientCredentials
+      REPLICATOR_SINK_AUTH_TOKENENDPOINT: https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token
+      REPLICATOR_SINK_AUTH_CLIENTID: <replicator-app-client-id>
+      REPLICATOR_SINK_AUTH_CLIENTSECRETFILE: /run/secrets/replicator_client_secret
+      REPLICATOR_SINK_AUTH_SCOPE: api://kurrentdb/.default
+    secrets:
+      - replicator_client_secret
+secrets:
+  replicator_client_secret:
+    file: ./client-secret.txt
+```
+
+Replicator prints the environment variables it loads at startup, with connection strings and all `auth` values except `type` masked as `***`. See [Authentication](../authentication/) for every option.
+````
+
+Use the image name and service layout from the existing Compose sample on the page, so the snippet reads as an addition to it.
+
 - [ ] **Step 4: Changelog**
 
 Under `## [Unreleased]` in `CHANGELOG.md`, add to `### Added`:
@@ -5006,7 +5103,7 @@ Expected: build succeeds and `dist/deployment/authentication/index.html` exists.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add docs/src CHANGELOG.md
+git add docs/src CHANGELOG.md  # includes deployment/kubernetes.mdx and deployment/docker.mdx
 git commit -m "docs: OAuth authentication guide and configuration reference
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
