@@ -15,6 +15,7 @@ public sealed class ClientCredentialsTokenSource : IAccessTokenSource, IDisposab
     readonly CancellationToken   _shutdown;
     readonly TokenEndpointClient _client;
     readonly TokenState          _state;
+    readonly RateLimitedWarning  _fallbackWarning;
     readonly object              _lock = new();
 
     Cached?              _cached;
@@ -23,12 +24,13 @@ public sealed class ClientCredentialsTokenSource : IAccessTokenSource, IDisposab
     OAuthTokenException? _lastFailure;
 
     public ClientCredentialsTokenSource(GrpcAuthOptions options, string side, HttpMessageHandler handler, TimeProvider time, CancellationToken shutdown) {
-        _options  = options;
-        _side     = side;
-        _time     = time;
-        _shutdown = shutdown;
-        _client   = new TokenEndpointClient(options, handler, side);
-        _state    = new TokenState(time);
+        _options         = options;
+        _side            = side;
+        _time            = time;
+        _shutdown        = shutdown;
+        _client          = new TokenEndpointClient(options, handler, side);
+        _state           = new TokenState(time);
+        _fallbackWarning = new RateLimitedWarning(time, TimeSpan.FromSeconds(60));
     }
 
     public async ValueTask<AccessTokenLease> GetAccessToken(CancellationToken ct) {
@@ -40,15 +42,21 @@ public sealed class ClientCredentialsTokenSource : IAccessTokenSource, IDisposab
 
             if (_cached is { } c && now < c.ExpiresAt - RefreshWindow(c)) return _state.Accept(c.Value);
 
+            var usable = Usable(now);
+
             if (_inflight is null || _inflight.IsCompleted) {
                 if (_lastFailureAt is { } failedAt && now - failedAt < FailureCooldown) {
-                    if (Usable(now) is { } fallback) return _state.Accept(fallback);
+                    if (usable != null) return _state.Accept(usable);
 
                     throw new OAuthTokenException(_lastFailure!.Message, _lastFailure);
                 }
 
-                _inflight = Task.Run(Refresh, CancellationToken.None);
+                _inflight = StartRefresh();
             }
+
+            // The cached token is inside its refresh window but still usable: the refresh runs in the background
+            // and this caller does not wait for it.
+            if (usable != null) return _state.Accept(usable);
 
             task = _inflight;
         }
@@ -63,10 +71,31 @@ public sealed class ClientCredentialsTokenSource : IAccessTokenSource, IDisposab
 
             if (fallback == null) throw;
 
-            Log.Warn("{Side}: token refresh failed; using the current token until it nears expiry", _side);
-
             return _state.Accept(fallback);
         }
+    }
+
+    Task<Cached> StartRefresh() {
+        var task = Task.Run(Refresh, CancellationToken.None);
+
+        // Observes the exception of a refresh nobody awaits (background refresh inside the refresh window), and
+        // reports the fallback to the still-usable cached token once, rate-limited.
+        task.ContinueWith(
+            t => {
+                if (t.Exception?.InnerException is not OAuthTokenException) return;
+
+                string? fallback;
+                lock (_lock) fallback = Usable(_time.GetUtcNow());
+
+                if (fallback != null && _fallbackWarning.ShouldLog())
+                    Log.Warn("{Side}: token refresh failed; using the current token until it nears expiry", _side);
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default
+        );
+
+        return task;
     }
 
     public void Invalidate(AccessTokenLease lease) {

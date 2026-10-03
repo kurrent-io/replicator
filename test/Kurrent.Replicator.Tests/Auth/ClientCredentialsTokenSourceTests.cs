@@ -33,8 +33,95 @@ public class ClientCredentialsTokenSourceTests {
         _time.Advance(TimeSpan.FromSeconds(3299)); // 3600 - 300 - 1
         await Assert.That((await s.GetAccessToken(default)).Value).IsEqualTo("A");
         _time.Advance(TimeSpan.FromSeconds(1));
-        await Assert.That((await s.GetAccessToken(default)).Value).IsEqualTo("B");
+        // inside the refresh window the still-usable token is returned while the refresh runs in the background
+        await Assert.That((await s.GetAccessToken(default)).Value).IsEqualTo("A");
+        await WaitUntil(async () => (await s.GetAccessToken(default)).Value == "B");
         await Assert.That(_stub.Count).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task Refresh_inside_window_returns_cached_token_without_waiting() {
+        Respond("A", "B");
+        var s = NewSource();
+        await s.GetAccessToken(default);
+        _stub.Gate = new TaskCompletionSource(); // never released: the refresh stays in flight
+        _time.Advance(TimeSpan.FromSeconds(3300)); // inside the refresh window, still usable
+
+        var first = s.GetAccessToken(default);
+        await Assert.That(first.IsCompleted).IsTrue();
+        await Assert.That((await first).Value).IsEqualTo("A");
+        await WaitUntil(() => Task.FromResult(_stub.Count == 2));
+
+        for (var i = 0; i < 5; i++) {
+            var next = s.GetAccessToken(default);
+            await Assert.That(next.IsCompleted).IsTrue();
+            await Assert.That((await next).Value).IsEqualTo("A");
+        }
+
+        await Assert.That(_stub.Count).IsEqualTo(2); // exactly one refresh request in flight
+        await _shutdown.CancelAsync();
+    }
+
+    [Test]
+    public async Task Background_refresh_result_is_used_by_the_next_call() {
+        Respond("A", "B");
+        var s = NewSource();
+        await s.GetAccessToken(default);
+        _stub.Gate = new TaskCompletionSource();
+        _time.Advance(TimeSpan.FromSeconds(3300));
+        await Assert.That((await s.GetAccessToken(default)).Value).IsEqualTo("A");
+        await WaitUntil(() => Task.FromResult(_stub.Count == 2));
+
+        _stub.Gate.SetResult();
+        await WaitUntil(async () => (await s.GetAccessToken(default)).Value == "B");
+        await Assert.That(_stub.Count).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task Failed_background_refresh_exception_is_observed() {
+        const string side = "unobserved-probe";
+        var unobserved = 0;
+
+        void OnUnobserved(object? _, UnobservedTaskExceptionEventArgs e) {
+            if (e.Exception.InnerExceptions.Any(x => x.Message.Contains(side))) Interlocked.Increment(ref unobserved);
+        }
+
+        TaskScheduler.UnobservedTaskException += OnUnobserved;
+
+        try {
+            await RunBackgroundFailure();
+            await WaitUntil(() => Task.FromResult(_stub.Count == 2));
+            await Task.Delay(100); // let the refresh task fault
+
+            for (var i = 0; i < 3; i++) {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+            }
+
+            await Assert.That(unobserved).IsEqualTo(0);
+        } finally {
+            TaskScheduler.UnobservedTaskException -= OnUnobserved;
+        }
+
+        // separate method so no local keeps the source (and its task) reachable
+        async Task RunBackgroundFailure() {
+            Respond("A");
+            var s = new ClientCredentialsTokenSource(Options, side, _stub, _time, _shutdown.Token);
+            await s.GetAccessToken(default);
+            _time.Advance(TimeSpan.FromSeconds(3300));
+            Fail();
+            await Assert.That((await s.GetAccessToken(default)).Value).IsEqualTo("A");
+        }
+    }
+
+    internal static async Task WaitUntil(Func<Task<bool>> condition) {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+
+        while (!await condition()) {
+            if (DateTime.UtcNow > deadline) throw new TimeoutException("condition not met within 5s");
+
+            await Task.Delay(5);
+        }
     }
 
     [Test]
@@ -180,5 +267,39 @@ public class ClientCredentialsTokenSourceTests {
         _time.Advance(TimeSpan.FromSeconds(31));
         var ex = await Assert.That(async () => await call.WaitAsync(TimeSpan.FromSeconds(5))).Throws<OAuthTokenException>();
         await Assert.That(ex!.Message).Contains("timed out");
+    }
+}
+
+[NotInParallel("global-logger")]
+public class ClientCredentialsTokenSourceLoggingTests {
+    const string Warning = "token refresh failed; using the current token";
+
+    [Test]
+    public async Task Fallback_warning_is_rate_limited_to_once_a_minute() {
+        using var logs = new LogCapture();
+        var time = new FakeTimeProvider();
+        var stub = new StubTokenEndpoint();
+        var options = new GrpcAuthOptions {
+            Type = GrpcAuthType.OAuthClientCredentials, TokenEndpoint = "https://idp.example.com/t", ClientId = "c", ClientSecret = "s"
+        };
+        var s = new ClientCredentialsTokenSource(options, "sink", stub, time, CancellationToken.None);
+        await s.GetAccessToken(default); // A, 3600s
+        stub.Respond = (_, _) => StubTokenEndpoint.Json(HttpStatusCode.ServiceUnavailable, "{\"error\":\"temporarily_unavailable\"}");
+
+        int Warnings() => logs.Events.Count(e => e.Level == Serilog.Events.LogEventLevel.Warning && e.Text.Contains(Warning));
+
+        time.Advance(TimeSpan.FromSeconds(3300)); // inside the refresh window, still usable
+        await Assert.That((await s.GetAccessToken(default)).Value).IsEqualTo("A");
+        await ClientCredentialsTokenSourceTests.WaitUntil(() => Task.FromResult(Warnings() == 1));
+
+        time.Advance(TimeSpan.FromSeconds(6)); // past the cooldown: a second refresh, which also fails
+        await Assert.That((await s.GetAccessToken(default)).Value).IsEqualTo("A");
+        await ClientCredentialsTokenSourceTests.WaitUntil(() => Task.FromResult(stub.Count == 3));
+        await Task.Delay(100);
+        await Assert.That(Warnings()).IsEqualTo(1);
+
+        time.Advance(TimeSpan.FromSeconds(60)); // a minute later the warning is logged again
+        await Assert.That((await s.GetAccessToken(default)).Value).IsEqualTo("A");
+        await ClientCredentialsTokenSourceTests.WaitUntil(() => Task.FromResult(Warnings() == 2));
     }
 }
