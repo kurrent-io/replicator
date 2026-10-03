@@ -21,7 +21,7 @@ class ScavengedEventsFilter(
     public async ValueTask<bool> Filter(BaseOriginalEvent originalEvent) {
         var stream = originalEvent.EventDetails.Stream;
 
-        var meta = await cache.GetOrAddStreamMeta(stream, s => auth.Run((a, c) => readMeta(s, a, c), CancellationToken.None)).ConfigureAwait(false);
+        var meta = await cache.GetOrAddStreamMeta(stream, s => auth.Run((a, c) => readMeta(s, a, c), auth.Shutdown)).ConfigureAwait(false);
 
         return meta == null || !meta.IsDeleted && !TtlExpired() && !await OverMaxCount().ConfigureAwait(false);
 
@@ -32,7 +32,7 @@ class ScavengedEventsFilter(
             if (!meta.MaxCount.HasValue)
                 return false;
 
-            var streamSize = await cache.GetOrAddStreamSize(stream, s => auth.Run((a, c) => readSize(s, a, c), CancellationToken.None)).ConfigureAwait(false);
+            var streamSize = await cache.GetOrAddStreamSize(stream, s => auth.Run((a, c) => readSize(s, a, c), auth.Shutdown)).ConfigureAwait(false);
 
             return originalEvent.LogPosition.EventNumber < streamSize.LastEventNumber - meta.MaxCount;
         }

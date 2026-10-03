@@ -122,4 +122,50 @@ public class ScavengedEventsFilterAuthTests {
         await Assert.That(sizeAuth.Single().Lease!.Value.Value).IsEqualTo("A");
         await Assert.That(handler.AuthorizationsFor(FakeKurrentDbHandler.ReadPath).Single()).IsEqualTo("Bearer A");
     }
+    [Test]
+    public async Task Shutdown_cancels_an_in_flight_metadata_read() {
+        using var shutdown = new CancellationTokenSource();
+        var       auth     = new GrpcAuthContext(_source, shutdown.Token, _time, "reader");
+        var       started  = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var filter = new ScavengedEventsFilter(
+            async (_, _, c) => {
+                started.TrySetResult();
+                await Task.Delay(System.Threading.Timeout.InfiniteTimeSpan, c);
+
+                return Plain;
+            },
+            NoSize, new StreamMetaCache(true), auth
+        );
+
+        var pending = filter.Filter(TestEvents.Original("s", 0)).AsTask();
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await shutdown.CancelAsync();
+
+        await Assert.That(async () => await pending.WaitAsync(TimeSpan.FromSeconds(5))).Throws<OperationCanceledException>();
+    }
+
+    [Test]
+    public async Task Shutdown_cancels_an_in_flight_stream_size_read() {
+        using var shutdown = new CancellationTokenSource();
+        var       auth     = new GrpcAuthContext(_source, shutdown.Token, _time, "reader");
+        var       started  = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var filter = new ScavengedEventsFilter(
+            (_, _, _) => Task.FromResult(new StreamMeta(false, null, 10, 0)),
+            async (_, _, c) => {
+                started.TrySetResult();
+                await Task.Delay(System.Threading.Timeout.InfiniteTimeSpan, c);
+
+                return new StreamSize(0);
+            },
+            new StreamMetaCache(true), auth
+        );
+
+        var pending = filter.Filter(TestEvents.Original("s", 0)).AsTask();
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await shutdown.CancelAsync();
+
+        await Assert.That(async () => await pending.WaitAsync(TimeSpan.FromSeconds(5))).Throws<OperationCanceledException>();
+    }
 }
