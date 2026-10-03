@@ -98,6 +98,8 @@ public class ScavengedEventsFilterAuthTests {
         var metaAuth = new List<CallAuth>();
         var sizeAuth = new List<CallAuth>();
 
+        var sizeReader = ScavengedEventsFilter.SizeReader(client);
+
         var filter = new ScavengedEventsFilter(
             (_, a, _) => {
                 metaAuth.Add(a);
@@ -107,7 +109,7 @@ public class ScavengedEventsFilterAuthTests {
             (s, a, c) => {
                 sizeAuth.Add(a);
 
-                return client.GetStreamSize(s, a.Credentials, c); // same as the EventStoreClient-based ctor
+                return sizeReader(s, a, c); // production reader, same as the EventStoreClient-based ctor
             },
             new StreamMetaCache(true),
             _auth

@@ -10,12 +10,13 @@ class ScavengedEventsFilter(
         GrpcAuthContext                                             auth
     ) {
     public ScavengedEventsFilter(EventStoreClient client, StreamMetaCache cache, GrpcAuthContext auth)
-        : this(
-            (s, a, c) => client.GetStreamMeta(s, a.Credentials, c),
-            (s, a, c) => client.GetStreamSize(s, a.Credentials, c),
-            cache,
-            auth
-        ) { }
+        : this(MetaReader(client), SizeReader(client), cache, auth) { }
+
+    internal static Func<string, CallAuth, CancellationToken, Task<StreamMeta>> MetaReader(EventStoreClient client) =>
+        (s, a, c) => client.GetStreamMeta(s, a.Credentials, c);
+
+    internal static Func<string, CallAuth, CancellationToken, Task<StreamSize>> SizeReader(EventStoreClient client) =>
+        (s, a, c) => client.GetStreamSize(s, a.Credentials, c);
 
     public async ValueTask<bool> Filter(BaseOriginalEvent originalEvent) {
         var stream = originalEvent.EventDetails.Stream;
