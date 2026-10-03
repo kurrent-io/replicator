@@ -1,0 +1,118 @@
+---
+title: Authentication
+description: Authenticate the gRPC reader and sink with basic credentials or OAuth 2.0 access tokens.
+sidebar:
+  order: 2
+---
+
+Replicator authenticates to each KurrentDB cluster separately. The reader (source) and the sink (target) each have their own optional `auth` section, so any combination works: basic on one side and OAuth on the other, OAuth on both with different identity providers, or basic on both.
+
+OAuth is supported for the `grpc` protocol only. It requires TLS (`tls=true`, the default), and the connection string must not contain `user:pass@`.
+
+## Auth types
+
+| `auth.type` | Use when |
+|:--|:--|
+| `connectionString` (default) | Basic credentials in the connection string, or no authentication. Behaves exactly as before. |
+| `oauthClientCredentials` | Replicator gets tokens from your identity provider with the OAuth 2.0 client credentials grant and refreshes them itself. |
+| `oauthTokenFile` | Something else (a sidecar, Vault agent, CI job) keeps a valid access token in a file; Replicator reads it. |
+
+## Options
+
+| Option | Type | Description |
+|:--|:--|:--|
+| `tokenEndpoint` | `oauthClientCredentials` | Token endpoint URL. Must be `https` (plain `http` only for `localhost`). |
+| `clientId` | `oauthClientCredentials` | OAuth client ID of the Replicator identity. |
+| `clientSecret` | `oauthClientCredentials` | Client secret. Set it through the `REPLICATOR_<SIDE>_AUTH_CLIENTSECRET` environment variable, not in the YAML file. |
+| `clientSecretFile` | `oauthClientCredentials` | Path to a file with the client secret, e.g. a mounted Kubernetes Secret. |
+| `clientAssertionFile` | `oauthClientCredentials` | Path to a signed JWT client assertion (RFC 7523), e.g. the Azure Workload Identity token file. Re-read on every token request. |
+| `clientAuthentication` | `oauthClientCredentials` | `post` (default) sends the secret as form fields; `basic` sends it in an HTTP Basic header. |
+| `scope` | `oauthClientCredentials` | Scopes to request. For Entra ID: `api://<kurrentdb-app-id-uri>/.default`. |
+| `additionalParameters` | `oauthClientCredentials` | Extra token request fields, e.g. `audience` (Auth0, Okta) or `resource` (Entra v1, ADFS). Keys are lower-cased. |
+| `defaultTokenLifetimeSeconds` | `oauthClientCredentials` | Lifetime to assume if your provider omits `expires_in`. Required in that case. |
+| `refreshBeforeExpirySeconds` | `oauthClientCredentials` | Refresh this many seconds before expiry. Default `300`, capped at half the token lifetime. |
+| `tokenFile` | `oauthTokenFile` | Path to a file containing only the access token. |
+| `tokenFileReloadSeconds` | `oauthTokenFile` | How often to re-read the file. Default `30`. |
+
+Exactly one of `clientSecret`, `clientSecretFile` and `clientAssertionFile` must be set. Every option can also be set with an environment variable, for example `REPLICATOR_SINK_AUTH_TOKENENDPOINT` or `REPLICATOR_SINK_AUTH_ADDITIONALPARAMETERS_AUDIENCE`.
+
+## KurrentDB permissions
+
+Replication reads `$all` and stream metadata on the source, and on the target it writes to any stream, sets stream metadata and deletes streams. Map the Replicator identity's role claim to `$admins` in the KurrentDB OAuth configuration on each cluster (or grant equivalent ACLs).
+
+If the reader's token cannot read a stream's metadata (`PermissionDenied`), Replicator stops replicating with an error rather than copying events it cannot check against scavenge rules. Fix the role mapping and restart Replicator.
+
+## How tokens are handled
+
+- Every gRPC call carries a current token. Tokens are refreshed before they expire, without restarting Replicator.
+- If the identity provider is unreachable, or KurrentDB rejects a token, replication pauses with a warning (logged at most once a minute) and resumes on its own once a valid token is available. A token KurrentDB rejected is not sent again for 60 seconds, and after that only one call re-tests it.
+- The long-running `$all` read and the realtime subscription are authorized when they start. If KurrentDB ends them when the token expires, Replicator restarts them from the last checkpoint with a fresh token.
+- Tokens, secrets and assertions are never logged.
+
+## Example: Entra ID with a client secret
+
+1. Register an application for KurrentDB. Expose an Application ID URI (e.g. `api://kurrentdb`) and create an app role (e.g. `Replicator`) that your KurrentDB OAuth configuration maps to `$admins`.
+2. Register an application for Replicator, create a client secret, and grant it the `Replicator` app role on the KurrentDB application (admin consent required).
+3. Configure the side that talks to the OAuth-enabled cluster:
+
+```yaml
+replicator:
+  reader:
+    protocol: grpc
+    connectionString: "esdb://source.example.com:2113?tls=true"
+    auth:
+      type: oauthClientCredentials
+      tokenEndpoint: "https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token"
+      clientId: "<replicator-app-client-id>"
+      clientSecretFile: /var/run/secrets/replicator/client-secret
+      scope: "api://kurrentdb/.default"
+  sink:
+    protocol: grpc
+    connectionString: "esdb://admin:changeit@target.example.com:2113?tls=true"
+```
+
+## Example: Entra ID with AKS Workload Identity (no secret)
+
+Federate the Replicator application with the Kubernetes service account, then point `clientAssertionFile` at the projected token:
+
+```yaml
+serviceAccountName: replicator-wi
+podLabels:
+  azure.workload.identity/use: "true"
+replicator:
+  sink:
+    protocol: grpc
+    connectionString: "esdb://target.example.com:2113?tls=true"
+    auth:
+      type: oauthClientCredentials
+      tokenEndpoint: "https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token"
+      clientId: "<replicator-app-client-id>"
+      clientAssertionFile: /var/run/secrets/azure/tokens/azure-identity-token
+      scope: "api://kurrentdb/.default"
+```
+
+## Example: other providers
+
+Keycloak, Okta, Auth0 and other OAuth 2.0 servers work the same way. Many need an `audience`:
+
+```yaml
+    auth:
+      type: oauthClientCredentials
+      tokenEndpoint: "https://idp.example.com/oauth2/token"
+      clientId: replicator
+      clientSecretFile: /var/run/secrets/replicator/client-secret
+      additionalParameters:
+        audience: kurrentdb
+```
+
+Token file written by another process:
+
+```yaml
+    auth:
+      type: oauthTokenFile
+      tokenFile: /var/run/secrets/kurrentdb/token
+```
+
+## Helm
+
+Put secrets in Kubernetes Secrets and inject them with `extraEnv`, `extraEnvFrom`, `extraVolumes` and `extraVolumeMounts`; don't put `clientSecret` in your values file, because it ends up in a ConfigMap. See [Kubernetes](../kubernetes/).

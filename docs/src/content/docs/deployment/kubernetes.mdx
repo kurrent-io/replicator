@@ -70,6 +70,14 @@ Available options are:
 | `replicator.filters`                 | Add one or more of provided [filters](../../features/filters)                                   | `[]`    |
 | `replicator.transform`               | Configure the [event transformation](../../features/transforms)                                 |
 | `replicator.transform.bufferSize`    | Size of the prepare buffer (filtering and transformations), in events                           | `1000`  |
+| `replicator.reader.auth.*`           | Reader [authentication](../authentication/) (gRPC only), e.g. `type: oauthClientCredentials`   | nil     |
+| `replicator.sink.auth.*`             | Sink [authentication](../authentication/) (gRPC only), configured independently of the reader  | nil     |
+| `serviceAccountName`                 | Service account for the pod (e.g. federated for Azure Workload Identity)                        | `""`    |
+| `podLabels`                          | Extra pod labels, e.g. `azure.workload.identity/use: "true"`                                    | `{}`    |
+| `extraEnv`                           | Extra container environment variables (use for secrets such as `REPLICATOR_SINK_AUTH_CLIENTSECRET`) | `[]` |
+| `extraEnvFrom`                       | Extra `envFrom` sources (Secrets, ConfigMaps)                                                   | `[]`    |
+| `extraVolumes`                       | Extra pod volumes (e.g. a Secret with a client secret or token file)                            | `[]`    |
+| `extraVolumeMounts`                  | Extra container volume mounts                                                                   | `[]`    |
 | `prometheus.metrics`                 | Enable annotations for Prometheus                                                               | `false` |
 | `prometheus.operator`                | Create `PodMonitor` custom resource for Prometheus Operator                                     | `false` |
 | `resources.requests.cpu`             | CPU request                                                                                     | `250m`  |
@@ -90,6 +98,51 @@ You should at least provide both connection strings and ensure that workloads in
 <Aside>
 Read also about [monitoring](#monitoring) the replicator process in Kubernetes.
 </Aside>
+
+### OAuth authentication
+
+When a cluster uses OAuth (for example with Microsoft Entra ID), configure that side's `auth` section and inject the secret from a Kubernetes Secret. Never put `clientSecret` in `values.yml`: the `replicator` block is rendered into a ConfigMap.
+
+```bash
+kubectl create secret generic replicator-oauth --from-literal=client-secret='<secret>'
+```
+
+```yaml
+replicator:
+  reader:
+    protocol: grpc
+    connectionString: "esdb://admin:changeit@source.example.com:2113?tls=true"
+  sink:
+    protocol: grpc
+    connectionString: "esdb://[cloudclusterid].mesdb.eventstore.cloud:2113?tls=true"
+    auth:
+      type: oauthClientCredentials
+      tokenEndpoint: "https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token"
+      clientId: "<replicator-app-client-id>"
+      clientSecretFile: /var/run/secrets/replicator/client-secret
+      scope: "api://kurrentdb/.default"
+extraVolumes:
+  - name: replicator-oauth
+    secret:
+      secretName: replicator-oauth
+extraVolumeMounts:
+  - name: replicator-oauth
+    mountPath: /var/run/secrets/replicator
+    readOnly: true
+```
+
+Alternatively, pass the secret as an environment variable instead of a file:
+
+```yaml
+extraEnv:
+  - name: REPLICATOR_SINK_AUTH_CLIENTSECRET
+    valueFrom:
+      secretKeyRef:
+        name: replicator-oauth
+        key: client-secret
+```
+
+With Azure Workload Identity there is no secret at all. Set `serviceAccountName` to the federated service account, add the `azure.workload.identity/use: "true"` pod label, and use `clientAssertionFile: /var/run/secrets/azure/tokens/azure-identity-token` instead of `clientSecretFile`. See [Authentication](../authentication/) for every option.
 
 ## Configuring a JavaScript transform
 

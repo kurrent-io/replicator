@@ -25,6 +25,8 @@ For example, for a Kurrent Cloud cluster the connection string would look like:
 
 Using gRPC gives you more predictable write operation time. For example, on a C4-size instance in Google Cloud Platform, one write would take 4-5 ms, and this number allows you to calculate the replication process throughput, as it doesn't change much when the database size grows. 
 
+The gRPC sink can authenticate with OAuth 2.0 access tokens instead of basic credentials. See [Authentication](../../deployment/authentication/).
+
 ## EventStoreDB TCP <Badge text="Legacy" variant="note" />
 
 The TCP sink should only be used when migrating from one older version cluster to another older version cluster. For EventStoreDB v20+ and KurrentDB, use the [KurrentDB sink](#kurrentdb) instead.
