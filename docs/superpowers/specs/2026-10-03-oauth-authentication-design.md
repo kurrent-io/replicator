@@ -41,7 +41,7 @@ Every client method Replicator uses (`AppendToStreamAsync`, `DeleteAsync`, `SetS
 This is the integration seam, in two layers:
 
 - **Per-call token (primary).** Replicator acquires the token itself before each call and passes `userCredentials: new UserCredentials(token)` (a bearer credential). The header then carries exactly that token, and the code that made the call knows which token was sent. That is what lets it report acceptance or rejection of a specific token value.
-- **Fallback hook.** `DefaultCredentials` is set to a sentinel bearer credential and `GetAuthenticationHeaderValue` is replaced. For the sentinel it returns `"Bearer " + await tokenSource.GetAccessToken(None)`. For any other credential it returns `credentials.ToString()` unchanged. This only covers a call site that forgets to pass per-call credentials, so the request is never sent unauthenticated.
+- **Fallback hook.** `DefaultCredentials` is set to a sentinel bearer credential and `GetAuthenticationHeaderValue` is replaced. For the sentinel it returns `"Bearer " + await tokenSource.GetAccessToken(None)`. For any other credential it returns `credentials.ToString()` unchanged. This only covers a call site that forgets to pass per-call credentials, so the request is never sent unauthenticated. It is also used, by design, for the client library's own one-time server-feature discovery call per client instance, which Replicator does not issue and cannot pass credentials to.
 
 No gRPC interceptor or custom `HttpMessageHandler` is needed, and the client's TLS handling (`tls`, `tlsVerifyCert`, `tlsCaFile`) stays untouched.
 
