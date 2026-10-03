@@ -111,7 +111,7 @@ All new code in `src/Kurrent.Replicator.KurrentDb/Auth/`. Each unit has a single
 |---|---|
 | `GrpcAuthOptions` (record) | Plain options for one side: `Type` enum plus the fields above. No binding logic. |
 | `GrpcAuthOptionsValidator` | Validates a `GrpcAuthOptions` against its parsed `EventStoreClientSettings`; returns all errors (not just the first). |
-| `IAccessTokenSource` | `ValueTask<string> GetAccessToken(CancellationToken ct)` and `void Invalidate()`. `Invalidate()` marks the current cached token as **rejected** and drops it from the cache. The next `GetAccessToken` refreshes (client credentials) or re-reads the file (token file), subject to the same single-flight and cooldown rules. Rejected-token quarantine applies to both sources (see "Rejected tokens"). |
+| `IAccessTokenSource` | `ValueTask<string> GetAccessToken(CancellationToken ct)`, `void Invalidate()` and `void ReportAccepted(string token)` (called by `Run` after a successful call; ends a rejected-token probe). `Invalidate()` marks the current cached token as **rejected** and drops it from the cache. The next `GetAccessToken` refreshes (client credentials) or re-reads the file (token file), subject to the same single-flight and cooldown rules. Rejected-token quarantine applies to both sources (see "Rejected tokens"). |
 | `ClientCredentialsTokenSource` | Token request, response parsing, caching, single-flight refresh. Takes an `HttpMessageHandler` (injectable for tests), a `TimeProvider` and the application shutdown token. |
 | `TokenFileSource` | Reads and caches the token file; reloads on interval or on `Invalidate()`. Takes a `TimeProvider`. |
 | `TokenGate` | `WaitForToken(IAccessTokenSource, CancellationToken)`: retries token acquisition with capped exponential backoff and rate-limited logging until it succeeds or is cancelled. Takes a `TimeProvider` for testing. |
@@ -171,7 +171,12 @@ Shared by both sources, so behaviour is the same for client credentials (where s
 
 - `Invalidate()` records the rejected token value and the time, `rejectedAt`.
 - For 60 seconds after `rejectedAt` (the quarantine), a newly acquired value equal to the rejected one is treated as "no new token yet": `GetAccessToken` throws `OAuthTokenException` ("the token source returned a token the server just rejected"), and `Run` backs off instead of resending a known-bad token. The stale-token fallbacks never return the rejected value during the quarantine either.
-- After the quarantine the same value may be returned again. This is a bounded probe: if the server problem was fixed (for example its OAuth configuration), the probe succeeds and replication resumes without waiting for rotation. If it is rejected again, `Invalidate()` starts a new quarantine. The rejected value is therefore sent at most once per minute per side.
+- After the quarantine the same value may be used again by **one probe at a time**. The first `GetAccessToken` after the quarantine takes a per-source probe lease and receives the value; every other caller keeps getting the quarantine `OAuthTokenException` (and backs off in `Run`) while the lease is held. The lease ends when:
+  - the probing call succeeds: `Run` calls `source.ReportAccepted(token)`, which clears the rejection record so all callers get the token again (server-side fix detected without rotation);
+  - the probing call is rejected: `Invalidate()` starts a new 60 s quarantine;
+  - or after 60 s with neither, e.g. the prober was cancelled or the long-running `ReadAllAsync` took the lease (it does not go through `Run`). Expiry then counts as a new quarantine.
+  The rejected value is therefore sent by at most one call per minute per side, even with concurrent writers, the prepare pipe's concurrent filter calls and the metrics reporter.
+- Since the header hook fetches through the same `GetAccessToken`, a gRPC call whose hook hits the quarantine fails as a token failure and is retried by `Run`, so it cannot bypass the lease.
 - Any different value is accepted immediately and clears the rejection record.
 - No JWT parsing; the external process owns validity.
 
@@ -278,6 +283,7 @@ Unit tests (TUnit, `test/Kurrent.Replicator.Tests/Auth/`), using a stub `HttpMes
   - `Invalidate()` forces the next call to refresh, still single-flight and subject to cooldown
   - after `Invalidate()`, a failing token endpoint causes `GetAccessToken` to throw rather than fall back to the rejected token
   - quarantine: the endpoint re-issuing the rejected value within 60 s throws; after 60 s the same value is returned (probe); a different value is returned immediately
+  - probe lease: with 10 concurrent callers at the quarantine boundary exactly one receives the rejected value and the rest throw; `ReportAccepted` releases the token to all; `Invalidate` during the probe restarts quarantine; an unreported lease expires after 60 s
   - `error` equal to the submitted client secret is not in the allowlist and is reported as `non-standard error (omitted)`; allowlisted codes and integer `error_codes` are reported
   - an error response whose `error_description`, `error_uri` and body echo the client secret and client assertion: exception message and all logs at Info/Warning contain neither; Debug output contains them only as `***`; a non-conforming `error` value is omitted
   - refresh failure with valid cached token returns cached token; with expired token throws `OAuthTokenException` carrying the HTTP status and `error` code
@@ -286,7 +292,7 @@ Unit tests (TUnit, `test/Kurrent.Replicator.Tests/Auth/`), using a stub `HttpMes
   - assertion file re-read per request
   - exception messages and logs contain no secret/assertion/token
 - `TokenGate`: backoff sequence and cap, cancellation, rate-limited logging, recovery log.
-- `GrpcAuthContext`: no-op for `None`; cancelled by either the caller token or the shutdown token. `Run`: retries `OAuthTokenException` and `Unauthenticated` with invalidation and backoff until success; propagates `PermissionDenied` and other exceptions immediately; shutdown ends the loop.
+- `GrpcAuthContext`: no-op for `None`; cancelled by either the caller token or the shutdown token. `Run`: calls `ReportAccepted` after success; retries `OAuthTokenException` and `Unauthenticated` with invalidation and backoff until success; propagates `PermissionDenied` and other exceptions immediately; shutdown ends the loop.
 - `AuthFailure.IsTokenFailure`: direct `OAuthTokenException`, wrapped in `RpcException.Status.DebugException` and `AggregateException`, `Unauthenticated`; negative cases including `PermissionDenied`.
 - `GrpcEventWriter` over a capturing-handler client with a token source that fails N times then succeeds: the write waits during failures, then is sent with the new token. Cancelling the shutdown token during the outage ends the wait with `OperationCanceledException`.
 - Rejected-token recovery: `GrpcEventWriter` with a `TokenFileSource` whose file holds token A, over a capturing stub handler that records requests and answers with gRPC status `Unauthenticated` while it sees `Bearer A`. The test rotates the file to token B. Expected: the write is retried, the file is re-read via `Invalidate()` without waiting for the reload interval, and the next request carries `Bearer B`. A second case removes the file after the rejection, then writes token B later: no request carries `Bearer A` after the rejection, and the write succeeds with B. A third case leaves A in the file and switches the stub to accept A after the rejection (a server-side fix): after the 60 s quarantine (advanced with `FakeTimeProvider`) A is sent once more and the write succeeds.
