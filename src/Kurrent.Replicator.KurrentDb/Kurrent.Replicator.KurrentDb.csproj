@@ -9,5 +9,7 @@
     <ItemGroup>
         <Using Include="EventStore.Client" />
         <Using Include="Kurrent.Replicator.Shared" />
+        <Using Include="Kurrent.Replicator.KurrentDb.Auth" />
+        <Using Include="Kurrent.Replicator.Shared.Logging" />
     </ItemGroup>
 </Project>
