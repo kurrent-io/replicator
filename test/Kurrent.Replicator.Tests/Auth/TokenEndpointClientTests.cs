@@ -141,17 +141,6 @@ public class TokenEndpointClientTests {
     }
 
     [Test]
-    public async Task Only_the_most_recent_tokens_are_retained_for_redaction() {
-        var i = 0;
-        _stub.Respond = (_, _) => StubTokenEndpoint.Json(HttpStatusCode.OK, StubTokenEndpoint.Token($"token-{i++}"));
-        var client = Client(Options());
-
-        for (var n = 0; n < 10; n++) await client.RequestToken(default);
-
-        await Assert.That(client.RetainedTokens).IsEquivalentTo(new[] { "token-6", "token-7", "token-8", "token-9" });
-    }
-
-    [Test]
     public async Task Allowlisted_error_and_integer_error_codes_are_reported() {
         _stub.Respond = (_, _) => StubTokenEndpoint.Json(HttpStatusCode.BadRequest, "{\"error\":\"invalid_client\",\"error_codes\":[7000215],\"error_description\":\"AADSTS7000215: Invalid client secret\"}");
         var ex = await Assert.That(async () => await Client(Options()).RequestToken(default)).Throws<OAuthTokenException>();
@@ -174,7 +163,7 @@ public class TokenEndpointClientTests {
 [NotInParallel("global-logger")]
 public class TokenEndpointClientLoggingTests {
     [Test]
-    public async Task Provider_text_is_never_logged_above_debug_and_is_redacted_at_debug() {
+    public async Task Provider_error_description_is_never_logged_at_any_level() {
         using var logs = new LogCapture();
         var assertionFile = Path.GetTempFileName();
         await File.WriteAllTextAsync(assertionFile, "assertion-xyz");
@@ -182,7 +171,7 @@ public class TokenEndpointClientLoggingTests {
         var stub = new StubTokenEndpoint {
             Respond = (_, _) => StubTokenEndpoint.Json(
                 HttpStatusCode.BadRequest,
-                "{\"error\":\"invalid_client\",\"error_description\":\"echo assertion-xyz\",\"error_uri\":\"https://x/assertion-xyz\"}"
+                "{\"error\":\"invalid_client\",\"error_description\":\"tenant contoso-internal rejected client; echo assertion-xyz\",\"error_uri\":\"https://x/assertion-xyz\"}"
             )
         };
 
@@ -193,9 +182,11 @@ public class TokenEndpointClientLoggingTests {
         var ex = await Assert.That(async () => await new TokenEndpointClient(options, stub, "sink").RequestToken(default)).Throws<OAuthTokenException>();
 
         await Assert.That(ex!.ToString()).DoesNotContain("assertion-xyz");
-        await Assert.That(string.Join("\n", logs.TextAtOrAbove(Serilog.Events.LogEventLevel.Information))).DoesNotContain("assertion-xyz");
+        await Assert.That(ex.ToString()).DoesNotContain("contoso-internal");
+        // LogCapture records Verbose and above, so this covers Debug too
         await Assert.That(logs.AllText).DoesNotContain("assertion-xyz");
-        await Assert.That(logs.AllText).Contains("echo ***");
+        await Assert.That(logs.AllText).DoesNotContain("contoso-internal");
+        await Assert.That(logs.AllText).DoesNotContain("error_description");
         File.Delete(assertionFile);
     }
 }

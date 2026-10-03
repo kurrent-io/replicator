@@ -15,7 +15,6 @@ sealed class TokenEndpointClient : IDisposable {
 
     const           string   AssertionType = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
     static readonly TimeSpan MaxLifetime   = TimeSpan.FromSeconds(86400);
-    const           int      RetainedMax   = 4;
 
     static readonly HashSet<string> AllowedErrors = [
         "invalid_request", "invalid_client", "invalid_grant", "unauthorized_client",
@@ -27,8 +26,6 @@ sealed class TokenEndpointClient : IDisposable {
     readonly HttpClient      _http;
     readonly Uri             _endpoint;
     readonly string?         _secret;
-    readonly List<string>    _seenTokens = []; // most recent access tokens, oldest first, at most RetainedMax
-    string?                  _lastAssertion;
     bool                     _clampWarned;
 
     public TokenEndpointClient(GrpcAuthOptions options, HttpMessageHandler handler, string side) {
@@ -40,11 +37,6 @@ sealed class TokenEndpointClient : IDisposable {
     }
 
     public string EndpointHost => _endpoint.Host;
-
-    /// <summary>The access tokens currently retained for redaction, oldest first (for tests).</summary>
-    internal IReadOnlyList<string> RetainedTokens {
-        get { lock (_seenTokens) return _seenTokens.ToList(); }
-    }
 
     public static SocketsHttpHandler CreateDefaultHandler() => new() { AllowAutoRedirect = false, PooledConnectionLifetime = TimeSpan.FromMinutes(5) };
 
@@ -76,7 +68,6 @@ sealed class TokenEndpointClient : IDisposable {
 
             if (assertion.Length == 0) throw new OAuthTokenException($"{_side}: client assertion file {_options.ClientAssertionFile} is empty");
 
-            _lastAssertion = assertion;
             form.Add(new("client_id", _options.ClientId!));
             form.Add(new("client_assertion_type", AssertionType));
             form.Add(new("client_assertion", assertion));
@@ -118,19 +109,7 @@ sealed class TokenEndpointClient : IDisposable {
                 !string.Equals(typeEl.GetString(), "Bearer", StringComparison.OrdinalIgnoreCase))
                 throw Invalid("token_type must be Bearer");
 
-            var token = tokenEl.GetString()!;
-            Retain(token);
-
-            return new(token, Lifetime(root));
-        }
-    }
-
-    void Retain(string token) {
-        lock (_seenTokens) {
-            _seenTokens.Remove(token);
-            _seenTokens.Add(token);
-
-            if (_seenTokens.Count > RetainedMax) _seenTokens.RemoveAt(0);
+            return new(tokenEl.GetString()!, Lifetime(root));
         }
     }
 
@@ -170,9 +149,8 @@ sealed class TokenEndpointClient : IDisposable {
     OAuthTokenException Invalid(string reason) => new($"{_side}: token endpoint {EndpointHost} returned an invalid token response: {reason}");
 
     OAuthTokenException ErrorResponse(int status, string body) {
-        string? error       = null;
-        string? description = null;
-        var     codes       = new List<long>();
+        string? error = null;
+        var     codes = new List<long>();
 
         try {
             using var doc  = JsonDocument.Parse(body);
@@ -180,7 +158,6 @@ sealed class TokenEndpointClient : IDisposable {
 
             if (root.ValueKind == JsonValueKind.Object) {
                 if (root.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.String) error = e.GetString();
-                if (root.TryGetProperty("error_description", out var d) && d.ValueKind == JsonValueKind.String) description = d.GetString();
 
                 if (root.TryGetProperty("error_codes", out var c) && c.ValueKind == JsonValueKind.Array) {
                     foreach (var item in c.EnumerateArray())
@@ -196,18 +173,7 @@ sealed class TokenEndpointClient : IDisposable {
         if (error != null) message.Append(", error=").Append(AllowedErrors.Contains(error) ? error : "non-standard error (omitted)");
         if (codes.Count > 0) message.Append(", error_codes=").Append(string.Join(",", codes));
 
-        if (description != null && Log.IsDebugEnabled()) Log.Debug("{Side}: token endpoint error_description: {Description}", _side, Redact(description));
-
         return new(message.ToString());
-    }
-
-    string Redact(string text) {
-        var secrets = new List<string>();
-        if (!string.IsNullOrEmpty(_secret)) secrets.Add(_secret);
-        if (!string.IsNullOrEmpty(_lastAssertion)) secrets.Add(_lastAssertion);
-        lock (_seenTokens) secrets.AddRange(_seenTokens);
-
-        return secrets.Where(s => s.Length > 0).OrderByDescending(s => s.Length).Aggregate(text, (t, s) => t.Replace(s, "***", StringComparison.Ordinal));
     }
 
     public void Dispose() => _http.Dispose();
