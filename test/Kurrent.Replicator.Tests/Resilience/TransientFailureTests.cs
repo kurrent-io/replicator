@@ -1,6 +1,7 @@
 #nullable enable
 using System.Net.Http;
 using System.Net.Sockets;
+using System.Security.Authentication;
 using EventStore.Client;
 using Grpc.Core;
 using Kurrent.Replicator.KurrentDb;
@@ -43,6 +44,44 @@ public class TransientFailureTests {
         await Assert.That(TransientFailure.IsTransient(new SocketException((int)SocketError.ConnectionRefused))).IsTrue();
         await Assert.That(TransientFailure.IsTransient(new InvalidOperationException("outer", new SocketException()))).IsTrue();
         await Assert.That(TransientFailure.IsTransient(new AggregateException(new InvalidOperationException(), Rpc(StatusCode.Unavailable)))).IsTrue();
+    }
+
+    [Test]
+    public async Task Refused_reset_timed_out_and_dns_failures_are_transient() {
+        static HttpRequestException Http(SocketError error, HttpRequestError kind = HttpRequestError.ConnectionError)
+            => new(kind, "x", new SocketException((int)error));
+
+        await Assert.That(TransientFailure.IsTransient(Http(SocketError.ConnectionRefused))).IsTrue();
+        await Assert.That(TransientFailure.IsTransient(Rpc(StatusCode.Unavailable, Http(SocketError.ConnectionRefused)))).IsTrue();
+        await Assert.That(TransientFailure.IsTransient(Http(SocketError.ConnectionReset))).IsTrue();
+        await Assert.That(TransientFailure.IsTransient(Http(SocketError.TimedOut))).IsTrue();
+        await Assert.That(TransientFailure.IsTransient(Http(SocketError.HostNotFound, HttpRequestError.NameResolutionError))).IsTrue();
+        await Assert.That(TransientFailure.IsTransient(Http(SocketError.TryAgain, HttpRequestError.NameResolutionError))).IsTrue();
+        await Assert.That(TransientFailure.IsTransient(Rpc(StatusCode.DeadlineExceeded))).IsTrue();
+    }
+
+    [Test]
+    public async Task Tls_validation_failures_are_not_transient() {
+        // what SocketsHttpHandler throws for an untrusted CA or a hostname mismatch
+        var tls = new HttpRequestException(
+            HttpRequestError.SecureConnectionError,
+            "The SSL connection could not be established",
+            new AuthenticationException("The remote certificate is invalid")
+        );
+
+        await Assert.That(TransientFailure.IsTransient(tls)).IsFalse();
+        await Assert.That(TransientFailure.IsTransient(Rpc(StatusCode.Unavailable, tls))).IsFalse();
+        await Assert.That(TransientFailure.IsTransient(new InvalidCredentialException("x"))).IsFalse();
+    }
+
+    [Test]
+    public async Task Permanent_configuration_errors_are_not_transient() {
+        // unsupported scheme / platform, malformed address, HTTP/2 not offered by the endpoint
+        await Assert.That(TransientFailure.IsTransient(new HttpRequestException("x", new NotSupportedException("scheme")))).IsFalse();
+        await Assert.That(TransientFailure.IsTransient(Rpc(StatusCode.Unavailable, new PlatformNotSupportedException("x")))).IsFalse();
+        await Assert.That(TransientFailure.IsTransient(new HttpRequestException("x", new UriFormatException("x")))).IsFalse();
+        await Assert.That(TransientFailure.IsTransient(new HttpRequestException(HttpRequestError.VersionNegotiationError, "x", new IOException("x"))))
+            .IsFalse();
     }
 
     [Test]

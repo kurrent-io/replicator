@@ -1,4 +1,5 @@
 using System.Net.Sockets;
+using System.Security.Authentication;
 using Grpc.Core;
 
 namespace Kurrent.Replicator.KurrentDb;
@@ -13,7 +14,7 @@ namespace Kurrent.Replicator.KurrentDb;
 /// </summary>
 public static class TransientFailure {
     public static bool IsTransient(Exception e)
-        => AuthFailure.Chain(e).Any(
+        => !IsPermanentSetupFailure(e) && AuthFailure.Chain(e).Any(
             x => x is RpcException {
                     StatusCode: StatusCode.Unavailable or StatusCode.DeadlineExceeded or StatusCode.ResourceExhausted or StatusCode.Aborted
                 }
@@ -21,6 +22,20 @@ public static class TransientFailure {
                 or HttpRequestException
                 or IOException
                 or SocketException
+        );
+
+    /// <summary>
+    /// Connection setup failures that retrying cannot fix, even though they surface as an
+    /// <see cref="HttpRequestException"/> or an Unavailable status: TLS certificate or hostname validation failed
+    /// (wrong <c>tlsCaFile</c>, untrusted or mismatched certificate), an unsupported scheme or platform feature, a
+    /// malformed address, or an endpoint that does not speak HTTP/2. These must fail the write so the host stops.
+    /// </summary>
+    static bool IsPermanentSetupFailure(Exception e)
+        => AuthFailure.Chain(e).Any(
+            x => x is AuthenticationException
+                or NotSupportedException
+                or UriFormatException
+                or HttpRequestException { HttpRequestError: HttpRequestError.VersionNegotiationError }
         );
 
     /// <summary>
