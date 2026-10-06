@@ -34,7 +34,8 @@ public class GrpcEventWriterAuthTests {
     public async Task Every_write_kind_sends_its_own_bearer_token() {
         var source           = new ControllableTokenSource(_time) { Value = "A" };
         var (writer, usage)  = Writer(source);
-        _handler.Respond     = s => Task.FromResult(s.Path == FakeKurrentDbHandler.AppendPath ? FakeKurrentDbHandler.AppendSuccess() : FakeKurrentDbHandler.TrailersOnly(StatusCode.Unavailable));
+        // non-transient failure for the delete: an Unavailable one would now be retried until it succeeds
+        _handler.Respond     = s => Task.FromResult(s.Path == FakeKurrentDbHandler.AppendPath ? FakeKurrentDbHandler.AppendSuccess() : FakeKurrentDbHandler.TrailersOnly(StatusCode.Internal));
 
         await writer.WriteEvent(TestEvents.Proposed("s"), default);
         await writer.WriteEvent(TestEvents.Meta("s"), default); // metadata is an Append to $$s
@@ -43,11 +44,10 @@ public class GrpcEventWriterAuthTests {
         await Assert.That(_handler.Requests.Select(r => r.Authorization).Distinct().Single()).IsEqualTo("Bearer A");
         await Assert.That(_handler.AuthorizationsFor(FakeKurrentDbHandler.DeletePath)).IsNotEmpty();
 
-        // EventStoreClient discovers server features lazily, once per distinct gRPC service/operation it uses on this
-        // client instance (see GrpcAuthenticationTests), not once per client overall: the first Append and the first
-        // Delete each trigger their own one-time discovery RPC, each going through the fallback path. With both an
-        // Append and a Delete call in this test, that's 2 fallback uses, not 1.
-        await Assert.That(usage.Count).IsEqualTo(2);
+        // EventStoreClient discovers server features once per channel, through the fallback path. This used to be 2
+        // because the delete failed with Unavailable, which makes the client drop the channel and discover again; the
+        // delete now fails with a non-transient status (Unavailable is retried), so the channel and its discovery are reused.
+        await Assert.That(usage.Count).IsEqualTo(1);
     }
 
     [Test]

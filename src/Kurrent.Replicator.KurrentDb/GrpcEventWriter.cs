@@ -10,6 +10,9 @@ namespace Kurrent.Replicator.KurrentDb;
 public class GrpcEventWriter(EventStoreClient client, GrpcAuthContext auth) : IEventWriter {
     static readonly ILog Log = LogProvider.GetCurrentClassLogger();
 
+    readonly RateLimitedWarning _warn = new(auth.Time, TimeSpan.FromSeconds(60));
+    int                         _outage;
+
     public GrpcEventWriter(EventStoreClient client) : this(client, GrpcAuthContext.None) { }
 
     public Task Start() => Task.CompletedTask;
@@ -38,7 +41,7 @@ public class GrpcEventWriter(EventStoreClient client, GrpcAuthContext auth) : IE
                     p.SourceLogPosition.EventPosition
                 );
 
-            var result = await auth.Run(
+            var result = await Write(
                     (a, c) => client.AppendToStreamAsync(
                         proposedEvent.EventDetails.Stream,
                         StreamState.Any,
@@ -57,7 +60,7 @@ public class GrpcEventWriter(EventStoreClient client, GrpcAuthContext auth) : IE
             if (Log.IsDebugEnabled())
                 Log.Debug("Deleting stream {Stream}", stream);
 
-            var result = await auth.Run(
+            var result = await Write(
                     (a, c) => client.DeleteAsync(stream, StreamState.Any, userCredentials: a.Credentials, cancellationToken: c),
                     cancellationToken
                 )
@@ -70,7 +73,7 @@ public class GrpcEventWriter(EventStoreClient client, GrpcAuthContext auth) : IE
             if (Log.IsDebugEnabled())
                 Log.Debug("Setting meta for {Stream} to {Meta}", meta.EventDetails.Stream, meta);
 
-            var result = await auth.Run(
+            var result = await Write(
                     (a, c) => client.SetStreamMetadataAsync(
                         meta.EventDetails.Stream,
                         StreamState.Any,
@@ -99,6 +102,36 @@ public class GrpcEventWriter(EventStoreClient client, GrpcAuthContext auth) : IE
                 .ConfigureAwait(false);
 
             return (long)result.LogPosition.CommitPosition;
+        }
+    }
+
+    /// <summary>
+    /// Runs one write, retrying transient failures (sink node unreachable, restarting, overloaded) with backoff until
+    /// it succeeds, fails with a non-transient error, or the wait is cancelled by shutdown or the caller. The gRPC
+    /// call itself only gets the caller's token, so shutdown never cancels a write in flight.
+    /// </summary>
+    async Task<T> Write<T>(Func<CallAuth, CancellationToken, Task<T>> call, CancellationToken ct) {
+        var attempt = 0;
+
+        while (true) {
+            try {
+                var result = await auth.Run(call, ct).ConfigureAwait(false);
+
+                if (attempt > 0 && Interlocked.Exchange(ref _outage, 0) == 1) {
+                    Log.Info("{Side}: KurrentDB writes succeed again", auth.Side);
+                    _warn.Reset();
+                }
+
+                return result;
+            } catch (Exception e) when (TransientFailure.IsTransient(e)) {
+                Volatile.Write(ref _outage, 1);
+
+                if (_warn.ShouldLog())
+                    Log.Warn("{Side}: KurrentDB write failed ({Error}); retrying with backoff until it succeeds", auth.Side, TransientFailure.Describe(e));
+
+                using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, auth.Shutdown);
+                await Task.Delay(TokenGate.Backoff(attempt++), auth.Time, linked.Token).ConfigureAwait(false);
+            }
         }
     }
 

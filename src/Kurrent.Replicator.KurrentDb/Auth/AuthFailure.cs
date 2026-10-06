@@ -26,7 +26,7 @@ public static class AuthFailure {
         return status is { } code ? $"{e.GetType().Name} ({code})" : e.GetType().Name;
     }
 
-    static IEnumerable<Exception> Chain(Exception root) {
+    internal static IEnumerable<Exception> Chain(Exception root) {
         var pending = new Stack<Exception>();
         pending.Push(root);
         var visited = 0;
