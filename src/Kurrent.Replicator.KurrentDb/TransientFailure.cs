@@ -5,8 +5,11 @@ namespace Kurrent.Replicator.KurrentDb;
 
 /// <summary>
 /// Classifies failures of a KurrentDB call that are worth retrying as-is: the node is unreachable, restarting,
-/// overloaded or changing leader. Retrying a write is safe because the replicator appends with
-/// <see cref="StreamState.Any"/> and fixed event ids, so a write that did land is deduplicated.
+/// overloaded or changing leader. A write whose response was lost may have landed, so a retry must be idempotent:
+/// events and stream metadata are appended with <see cref="StreamState.Any"/> and the source event's id (metadata as a
+/// <c>$metadata</c> event on <c>$$stream</c>, not via SetStreamMetadataAsync, which mints a new id per call), so
+/// KurrentDB deduplicates the repeat. A repeated soft delete with <see cref="StreamState.Any"/> succeeds and leaves
+/// the stream deleted.
 /// </summary>
 public static class TransientFailure {
     public static bool IsTransient(Exception e)

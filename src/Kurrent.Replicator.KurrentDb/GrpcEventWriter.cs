@@ -3,7 +3,10 @@ using Kurrent.Replicator.Shared.Contracts;
 using Kurrent.Replicator.Shared.Logging;
 using Kurrent.Replicator.Shared.Observe;
 using Ubiquitous.Metrics;
+using System.Text.Json;
+using Kurrent.Replicator.KurrentDb.Internals;
 using StreamAcl = EventStore.Client.StreamAcl;
+using StreamMetadata = EventStore.Client.StreamMetadata;
 
 namespace Kurrent.Replicator.KurrentDb;
 
@@ -69,31 +72,25 @@ public class GrpcEventWriter(EventStoreClient client, GrpcAuthContext auth) : IE
             return (long)result.LogPosition.CommitPosition;
         }
 
+        // Written as a plain append of a $metadata event to $$<stream> rather than via SetStreamMetadataAsync, which
+        // generates a new event id per call: reusing the source event's id lets KurrentDB deduplicate a retry whose
+        // first attempt landed but whose response was lost.
         async Task<long> SetStreamMeta(ProposedMetaEvent meta) {
             if (Log.IsDebugEnabled())
                 Log.Debug("Setting meta for {Stream} to {Meta}", meta.EventDetails.Stream, meta);
 
+            var data = new EventData(
+                Uuid.FromGuid(meta.EventDetails.EventId),
+                SystemEventTypes.StreamMetadata,
+                SerializeMetadata(meta.Data),
+                contentType: "application/json"
+            );
+
             var result = await Write(
-                    (a, c) => client.SetStreamMetadataAsync(
-                        meta.EventDetails.Stream,
+                    (a, c) => client.AppendToStreamAsync(
+                        SystemStreams.MetastreamOf(meta.EventDetails.Stream),
                         StreamState.Any,
-                        new(
-                            meta.Data.MaxCount,
-                            meta.Data.MaxAge,
-                            ValueOrNull(meta.Data.TruncateBefore, x => new StreamPosition((ulong)x!)),
-                            meta.Data.CacheControl,
-                            ValueOrNull(
-                                meta.Data.StreamAcl,
-                                x =>
-                                    new StreamAcl(
-                                        x.ReadRoles,
-                                        x.WriteRoles,
-                                        x.DeleteRoles,
-                                        x.MetaReadRoles,
-                                        x.MetaWriteRoles
-                                    )
-                            )
-                        ),
+                        [data],
                         userCredentials: a.Credentials,
                         cancellationToken: c
                     ),
@@ -144,6 +141,21 @@ public class GrpcEventWriter(EventStoreClient client, GrpcAuthContext auth) : IE
             evt.EventDetails.ContentType
         );
 
-    static T? ValueOrNull<T1, T>(T1? source, Func<T1, T> transform)
-        => source == null ? default : transform(source);
+    /// <summary>
+    /// The <c>$metadata</c> event body in KurrentDB's system metadata format, using the same converter the readers
+    /// use to parse it. The contract carries no custom metadata (the readers drop it), so none is written.
+    /// </summary>
+    internal static byte[] SerializeMetadata(Shared.Contracts.StreamMetadata meta)
+        => JsonSerializer.SerializeToUtf8Bytes(
+            new StreamMetadata(
+                meta.MaxCount,
+                meta.MaxAge,
+                meta.TruncateBefore is { } tb ? new StreamPosition((ulong)tb) : null,
+                meta.CacheControl,
+                meta.StreamAcl is { } acl
+                    ? new StreamAcl(acl.ReadRoles, acl.WriteRoles, acl.DeleteRoles, acl.MetaReadRoles, acl.MetaWriteRoles)
+                    : null
+            ),
+            MetaSerialization.StreamMetadataJsonSerializerOptions
+        );
 }

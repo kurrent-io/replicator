@@ -134,4 +134,53 @@ public class GrpcEventWriterRetryTests {
         await Assert.That(async () => await delete.WaitAsync(TimeSpan.FromSeconds(10))).Throws<Exception>();
         await Assert.That(Volatile.Read(ref deletes)).IsEqualTo(3);
     }
+
+    [Test]
+    public async Task Metadata_write_retried_after_a_lost_response_resends_the_same_event_id() {
+        FailAppends(1);
+        var writer = Writer();
+        var meta   = TestEvents.Meta("s");
+
+        var write = writer.WriteEvent(meta, CancellationToken.None);
+        await Drive(write);
+
+        await Assert.That(await write).IsEqualTo(1L);
+
+        var bodies = _handler.Requests.Where(r => r.Path == FakeKurrentDbHandler.AppendPath).Select(r => r.Body!).ToList();
+        await Assert.That(bodies.Count).IsEqualTo(2);
+
+        // both attempts append a $metadata event to $$s carrying the source event's id, so KurrentDB deduplicates
+        var id = StructuredUuid(meta.EventDetails.EventId);
+
+        foreach (var body in bodies) {
+            await Assert.That(Contains(body, id)).IsTrue();
+            await Assert.That(Contains(body, "$$s"u8.ToArray())).IsTrue();
+            await Assert.That(Contains(body, "$metadata"u8.ToArray())).IsTrue();
+        }
+    }
+
+    /// <summary>Protobuf encoding of UUID.Structured { most_significant_bits = 1; least_significant_bits = 2 } (both int64).</summary>
+    static byte[] StructuredUuid(Guid id) {
+        // the client sends the RFC 4122 (big-endian) halves of the id
+        var rfc = id.ToByteArray(bigEndian: true);
+        var msb = System.Buffers.Binary.BinaryPrimitives.ReadInt64BigEndian(rfc.AsSpan(0, 8));
+        var lsb = System.Buffers.Binary.BinaryPrimitives.ReadInt64BigEndian(rfc.AsSpan(8, 8));
+        var bytes = new List<byte> { 0x08 };
+        Varint(bytes, (ulong)msb);
+        bytes.Add(0x10);
+        Varint(bytes, (ulong)lsb);
+
+        return bytes.ToArray();
+
+        static void Varint(List<byte> to, ulong value) {
+            while (value >= 0x80) {
+                to.Add((byte)(value | 0x80));
+                value >>= 7;
+            }
+
+            to.Add((byte)value);
+        }
+    }
+
+    static bool Contains(byte[] haystack, byte[] needle) => haystack.AsSpan().IndexOf(needle) >= 0;
 }

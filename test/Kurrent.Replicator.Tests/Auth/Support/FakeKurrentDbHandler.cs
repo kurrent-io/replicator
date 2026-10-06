@@ -18,7 +18,8 @@ public sealed class FakeKurrentDbHandler : HttpMessageHandler {
     public const string ReadPath   = "/event_store.client.streams.Streams/Read";
     public const string DeletePath = "/event_store.client.streams.Streams/Delete";
 
-    public sealed record Seen(string Path, string? Authorization);
+    /// <summary>One gRPC call: path, authorization header and the raw (gRPC-framed protobuf) request body.</summary>
+    public sealed record Seen(string Path, string? Authorization, byte[]? Body = null);
 
     public ConcurrentQueue<Seen> Requests { get; } = new();
 
@@ -32,10 +33,10 @@ public sealed class FakeKurrentDbHandler : HttpMessageHandler {
 
         if (path.StartsWith("/event_store.client.server_features.", StringComparison.Ordinal)) return TrailersOnly(StatusCode.Unimplemented);
 
-        if (request.Content != null) await request.Content.ReadAsByteArrayAsync(cancellationToken);
+        var body = request.Content != null ? await request.Content.ReadAsByteArrayAsync(cancellationToken) : null;
 
         var auth = request.Headers.TryGetValues("authorization", out var values) ? values.FirstOrDefault() : null;
-        var seen = new Seen(path, auth);
+        var seen = new Seen(path, auth, body);
         Requests.Enqueue(seen);
 
         return await Respond(seen);
