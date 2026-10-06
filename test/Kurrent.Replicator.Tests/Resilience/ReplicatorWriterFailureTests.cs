@@ -22,25 +22,49 @@ public class ReplicatorWriterFailureTests {
     sealed class FakeReader(int count, bool blockAfter) : IEventReader {
         public int Cycles;
 
-        public readonly ConcurrentQueue<CancellationToken> PositionQueryTokens = new();
-
         public string Protocol => "fake";
 
         public async Task ReadEvents(LogPosition fromLogPosition, Func<BaseOriginalEvent, ValueTask> next, CancellationToken cancellationToken) {
             Interlocked.Increment(ref Cycles);
+
+            await PositionQueryGate.WaitAsync(cancellationToken);
 
             for (var i = 0; i < count; i++) await next(TestEvents.Original("s", i));
 
             if (blockAfter) await Task.Delay(Timeout.Infinite, cancellationToken);
         }
 
-        public Task<long?> GetLastPosition(CancellationToken cancellationToken) {
-            PositionQueryTokens.Enqueue(cancellationToken);
+        // Reading starts only once the metrics reporter is inside GetLastPosition, so a fast writer failure can't
+        // cancel the reporter before it ever queried the position.
+        public Task PositionQueryGate { get; init; } = Task.CompletedTask;
 
-            return Task.FromResult<long?>(count);
-        }
+        public Func<CancellationToken, Task<long?>> OnGetLastPosition { get; init; } = _ => Task.FromResult<long?>(null);
+
+        public Task<long?> GetLastPosition(CancellationToken cancellationToken) => OnGetLastPosition(cancellationToken);
 
         public ValueTask<bool> Filter(BaseOriginalEvent originalEvent) => ValueTask.FromResult(true);
+    }
+
+    /// <summary>A position query that signals when it starts and when it ends; it ends only on cancellation unless <paramref name="ignoreCancellation"/>.</summary>
+    sealed class PositionQueryProbe(bool ignoreCancellation = false) {
+        public readonly TaskCompletionSource Started   = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public readonly TaskCompletionSource Completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public readonly TaskCompletionSource Release   = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<long?> Query(CancellationToken cancellationToken) {
+            Started.TrySetResult();
+
+            try {
+                if (ignoreCancellation) await Release.Task;
+                else await Task.Delay(Timeout.Infinite, cancellationToken);
+            } finally {
+                Completed.TrySetResult();
+            }
+
+            return null;
+        }
+
+        public FakeReader Reader(int count, bool blockAfter) => new(count, blockAfter) { PositionQueryGate = Started.Task, OnGetLastPosition = Query };
     }
 
     sealed class BrokenWriter : IEventWriter {
@@ -58,9 +82,12 @@ public class ReplicatorWriterFailureTests {
     sealed class MemoryCheckpointStore : ICheckpointStore {
         public readonly ConcurrentQueue<LogPosition> Stored = new();
 
+        public bool FailFlush { get; init; }
+
         public ValueTask<bool>        HasStoredCheckpoint(CancellationToken ct) => ValueTask.FromResult(false);
         public ValueTask<LogPosition> LoadCheckpoint(CancellationToken ct)      => ValueTask.FromResult(LogPosition.Start);
-        public ValueTask              Flush(CancellationToken ct)               => ValueTask.CompletedTask;
+
+        public ValueTask Flush(CancellationToken ct) => FailFlush ? ValueTask.FromException(new IOException("checkpoint store unavailable")) : ValueTask.CompletedTask;
 
         public ValueTask StoreCheckpoint(LogPosition logPosition, CancellationToken ct) {
             Stored.Enqueue(logPosition);
@@ -95,28 +122,68 @@ public class ReplicatorWriterFailureTests {
         }
     }
 
-    [Test]
-    public async Task Failed_replication_stops_its_background_work_before_returning() {
-        using var stopping = new CancellationTokenSource();
-        var       reader   = new FakeReader(5, blockAfter: true);
-
-        var run = Replicator.Replicate(
+    static Task Run(IEventReader reader, ICheckpointStore store, CancellationToken stoppingToken)
+        => Replicator.Replicate(
             reader,
             new BrokenWriter(),
             new SinkPipeOptions(1, 10),
             new PreparePipelineOptions(null, null, 1, 10),
             new NoCheckpointSeeder(),
-            new MemoryCheckpointStore(),
+            store,
             new ReplicatorOptions(true, true, TimeSpan.Zero, TimeSpan.FromSeconds(1)),
-            stopping.Token
+            stoppingToken
         );
+
+    // True when the position query had finished by the time Replicate's task completed (checked synchronously on completion).
+    static Task<bool> QueryCompletedWhenRunCompleted(Task run, PositionQueryProbe probe)
+        => run.ContinueWith(_ => probe.Completed.Task.IsCompleted, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+
+    [Test]
+    public async Task Failed_replication_stops_its_background_work_before_returning() {
+        using var stopping = new CancellationTokenSource();
+        var       probe    = new PositionQueryProbe();
+
+        var run      = Run(probe.Reader(5, blockAfter: true), new MemoryCheckpointStore(), stopping.Token);
+        var observed = QueryCompletedWhenRunCompleted(run, probe);
 
         try {
             await Assert.That(async () => await run.WaitAsync(TimeSpan.FromSeconds(20))).Throws<ReplicatorFailedException>();
-            // the metrics reporter was stopped inside Replicate, not left running until the host stops
-            await Assert.That(reader.PositionQueryTokens).IsNotEmpty();
-            await Assert.That(reader.PositionQueryTokens.All(t => t.IsCancellationRequested)).IsTrue();
+            // the metrics reporter was cancelled and awaited inside Replicate, not left running until the host stops
+            await Assert.That(await observed).IsTrue();
         } finally {
+            await stopping.CancelAsync();
+        }
+    }
+
+    [Test]
+    public async Task Reporter_is_stopped_even_when_the_final_checkpoint_flush_fails() {
+        using var stopping = new CancellationTokenSource();
+        var       probe    = new PositionQueryProbe();
+
+        var run      = Run(probe.Reader(5, blockAfter: true), new MemoryCheckpointStore { FailFlush = true }, stopping.Token);
+        var observed = QueryCompletedWhenRunCompleted(run, probe);
+
+        try {
+            await Assert.That(async () => await run.WaitAsync(TimeSpan.FromSeconds(20))).Throws<IOException>();
+            await Assert.That(await observed).IsTrue();
+        } finally {
+            await stopping.CancelAsync();
+        }
+    }
+
+    [Test]
+    public async Task Writer_failure_still_ends_replication_when_the_position_query_ignores_cancellation() {
+        using var stopping = new CancellationTokenSource();
+        var       probe    = new PositionQueryProbe(ignoreCancellation: true);
+
+        var run = Run(probe.Reader(5, blockAfter: true), new MemoryCheckpointStore(), stopping.Token);
+
+        try {
+            // bounded: the reporter is given a short grace period after cancellation, then abandoned
+            await Assert.That(async () => await run.WaitAsync(TimeSpan.FromSeconds(20))).Throws<ReplicatorFailedException>();
+            await Assert.That(probe.Completed.Task.IsCompleted).IsFalse();
+        } finally {
+            probe.Release.TrySetResult();
             await stopping.CancelAsync();
         }
     }

@@ -14,6 +14,8 @@ public static class Replicator {
 
     static readonly TimeSpan WriterStopGracePeriod = TimeSpan.FromSeconds(5);
 
+    static readonly TimeSpan ReporterStopTimeout = TimeSpan.FromSeconds(5);
+
     public static async Task Replicate(
             IEventReader           reader,
             IEventWriter           writer,
@@ -83,86 +85,83 @@ public static class Replicator {
         using var reporterCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
         var       reporter    = Task.Run(() => Report(reporterCts.Token), CancellationToken.None);
 
+        var stopping = false;
+
+        // Every exit path (writer start, seeding or the final checkpoint flush failing included) stops the reporter.
         try {
             await writer.Start();
             await checkpointSeeder.Seed(stoppingToken);
-        } catch {
-            await StopReporter().ConfigureAwait(false);
 
-            throw;
-        }
+            try {
+                while (!stopping) {
+                    ReplicationStatus.Start();
 
-        var stopping = false;
+                    await readerPipe.Start(linkedCts.Token).ConfigureAwait(false);
+                    stopping = linkedCts.IsCancellationRequested || !replicatorOptions.RunContinuously;
 
-        try {
-            while (!stopping) {
-                ReplicationStatus.Start();
+                    if (stopping) {
+                        Log.Info("Replicator stopping");
+                    }
 
-                await readerPipe.Start(linkedCts.Token).ConfigureAwait(false);
-                stopping = linkedCts.IsCancellationRequested || !replicatorOptions.RunContinuously;
+                    if (!replicatorOptions.RunContinuously) {
+                        do {
+                            Log.Info("Closing the prepare channel...");
+                            await Task.Delay(1000, CancellationToken.None).ConfigureAwait(false);
+                        } while (!prepareChannel.Writer.TryComplete());
+                    }
 
-                if (stopping) {
-                    Log.Info("Replicator stopping");
-                }
+                    ReplicationStatus.Stop();
 
-                if (!replicatorOptions.RunContinuously) {
-                    do {
-                        Log.Info("Closing the prepare channel...");
+                    while (sinkChannel.Reader.Count > 0 && !writerTask.IsCompleted) {
+                        await checkpointStore.Flush(CancellationToken.None).ConfigureAwait(false);
+                        Log.Info("Waiting for the sink pipe to exhaust ({Left} left)...", sinkChannel.Reader.Count);
                         await Task.Delay(1000, CancellationToken.None).ConfigureAwait(false);
-                    } while (!prepareChannel.Writer.TryComplete());
-                }
+                    }
 
-                ReplicationStatus.Stop();
+                    if (writerTask.IsCompleted && sinkChannel.Reader.Count > 0) {
+                        Log.Warn(
+                            "Writer stopped with {Count} events not written; they will be read again from the last checkpoint",
+                            sinkChannel.Reader.Count
+                        );
+                    }
 
-                while (sinkChannel.Reader.Count > 0 && !writerTask.IsCompleted) {
-                    await checkpointStore.Flush(CancellationToken.None).ConfigureAwait(false);
-                    Log.Info("Waiting for the sink pipe to exhaust ({Left} left)...", sinkChannel.Reader.Count);
-                    await Task.Delay(1000, CancellationToken.None).ConfigureAwait(false);
-                }
+                    await Flush().ConfigureAwait(false);
 
-                if (writerTask.IsCompleted && sinkChannel.Reader.Count > 0) {
-                    Log.Warn(
-                        "Writer stopped with {Count} events not written; they will be read again from the last checkpoint",
-                        sinkChannel.Reader.Count
-                    );
-                }
+                    if (stopping) {
+                        await writerCts.CancelAsync();
+                        sinkChannel.Writer.Complete();
 
-                await Flush().ConfigureAwait(false);
-
-                if (stopping) {
-                    await writerCts.CancelAsync();
-                    sinkChannel.Writer.Complete();
-
-                    break;
-                }
-
-                Log.Info("Will restart in {0} sec", replicatorOptions.RestartDelay.TotalSeconds);
-
-                if (replicatorOptions.RestartDelay != TimeSpan.Zero) {
-                    try {
-                        await Task.Delay(replicatorOptions.RestartDelay, linkedCts.Token);
-                    } catch (OperationCanceledException) {
-                        // stopping now
                         break;
                     }
+
+                    Log.Info("Will restart in {0} sec", replicatorOptions.RestartDelay.TotalSeconds);
+
+                    if (replicatorOptions.RestartDelay != TimeSpan.Zero) {
+                        try {
+                            await Task.Delay(replicatorOptions.RestartDelay, linkedCts.Token);
+                        } catch (OperationCanceledException) {
+                            // stopping now
+                            break;
+                        }
+                    }
                 }
+            } catch (Exception e) {
+                Log.Error(e, "Replicator crashed");
+            } finally {
+                Stop();
             }
-        } catch (Exception e) {
-            Log.Error(e, "Replicator crashed");
+
+            try {
+                await prepareTask.ConfigureAwait(false);
+                await writerTask.ConfigureAwait(false);
+            } catch (OperationCanceledException) { } catch (Exception e) {
+                if (!writerDied) Log.Error(e, "Error stopping pending tasks");
+            }
+
+            await Flush().ConfigureAwait(false);
         } finally {
-            Stop();
+            await StopReporter().ConfigureAwait(false);
         }
-
-        try {
-            await prepareTask.ConfigureAwait(false);
-            await writerTask.ConfigureAwait(false);
-        } catch (OperationCanceledException) { } catch (Exception e) {
-            if (!writerDied) Log.Error(e, "Error stopping pending tasks");
-        }
-
-        await Flush().ConfigureAwait(false);
-
-        await StopReporter().ConfigureAwait(false);
 
         if (writerDied) {
             // A writer cancelled by shutdown (ApplicationStopping, e.g. while it waited out a sink outage) ends just
@@ -193,9 +192,18 @@ public static class Replicator {
             writerCts.Cancel();
         }
 
+        // A position query that ignores its token (or a stalled source) must not hold up shutdown or the writer failure
+        // report: give the reporter a short grace period after cancellation, then move on without it.
         async Task StopReporter() {
             await reporterCts.CancelAsync().ConfigureAwait(false);
-            await reporter.ConfigureAwait(false);
+
+            try {
+                await reporter.WaitAsync(ReporterStopTimeout, CancellationToken.None).ConfigureAwait(false);
+            } catch (TimeoutException) {
+                Log.Warn("The metrics reporter did not stop within {Timeout}; continuing without it", ReporterStopTimeout);
+            } catch (Exception e) {
+                Log.Warn(e, "The metrics reporter failed while stopping");
+            }
         }
 
         async Task Flush() {

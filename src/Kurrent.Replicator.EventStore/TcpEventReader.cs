@@ -132,7 +132,8 @@ public class TcpEventReader : IEventReader {
     public async Task<long?> GetLastPosition(CancellationToken cancellationToken) {
         if (!_connected) return null;
 
-        var last = await _connection.ReadAllEventsBackwardAsync(Position.End, 1, false).ConfigureAwait(false);
+        // The TCP client takes no token: stop waiting on cancellation so the metrics reporter can shut down.
+        var last = await _connection.ReadAllEventsBackwardAsync(Position.End, 1, false).WaitAsync(cancellationToken).ConfigureAwait(false);
 
         return last.NextPosition.CommitPosition;
     }
