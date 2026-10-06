@@ -15,7 +15,7 @@ resources:
 image:
   registry: docker.io
   repository: eventstore/replicator
-  tag: 0.4.7
+  tag: 0.6.0
   pullPolicy: IfNotPresent
 replicator:
   reader:

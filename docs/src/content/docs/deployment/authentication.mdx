@@ -7,7 +7,7 @@ sidebar:
 
 Replicator authenticates to each KurrentDB cluster separately. The reader (source) and the sink (target) each have their own optional `auth` section, so any combination works: basic on one side and OAuth on the other, OAuth on both with different identity providers, or basic on both.
 
-OAuth requires a Replicator release that includes OAuth support. It is supported for the `grpc` protocol only. It requires TLS (`tls=true`, the default), and the connection string must not contain `user:pass@`.
+OAuth requires Replicator 0.6.0 or later. It is supported for the `grpc` protocol only. It requires TLS (`tls=true`, the default), and the connection string must not contain `user:pass@`.
 
 ## Auth types
 
