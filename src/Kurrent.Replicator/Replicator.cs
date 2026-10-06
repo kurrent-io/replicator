@@ -16,6 +16,9 @@ public static class Replicator {
 
     static readonly TimeSpan ReporterStopTimeout = TimeSpan.FromSeconds(5);
 
+    /// <summary>Test seam: raised with the reader once a metrics reporter loop has exited (after its last log line).</summary>
+    internal static event Action<IEventReader>? ReporterExited;
+
     public static async Task Replicate(
             IEventReader           reader,
             IEventWriter           writer,
@@ -249,6 +252,7 @@ public static class Replicator {
             }
 
             Log.Info("Reporting stopped");
+            ReporterExited?.Invoke(reader);
         }
     }
 }

@@ -175,16 +175,27 @@ public class ReplicatorWriterFailureTests {
     public async Task Writer_failure_still_ends_replication_when_the_position_query_ignores_cancellation() {
         using var stopping = new CancellationTokenSource();
         var       probe    = new PositionQueryProbe(ignoreCancellation: true);
+        var       reader   = probe.Reader(5, blockAfter: true);
+        var       exited   = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        var run = Run(probe.Reader(5, blockAfter: true), new MemoryCheckpointStore(), stopping.Token);
+        void OnReporterExited(IEventReader r) {
+            if (ReferenceEquals(r, reader)) exited.TrySetResult();
+        }
+
+        Replicator.ReporterExited += OnReporterExited;
 
         try {
+            var run = Run(reader, new MemoryCheckpointStore(), stopping.Token);
+
             // bounded: the reporter is given a short grace period after cancellation, then abandoned
             await Assert.That(async () => await run.WaitAsync(TimeSpan.FromSeconds(20))).Throws<ReplicatorFailedException>();
             await Assert.That(probe.Completed.Task.IsCompleted).IsFalse();
         } finally {
             probe.Release.TrySetResult();
             await stopping.CancelAsync();
+            // the abandoned reporter logs once released: let it finish before the test (and its output capture) ends
+            await exited.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Replicator.ReporterExited -= OnReporterExited;
         }
     }
 
