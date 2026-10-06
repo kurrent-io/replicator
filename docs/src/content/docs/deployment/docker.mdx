@@ -31,4 +31,29 @@ When you start all the component using `docker-compose up`, you'd be able to che
 Watch out for the replication gap and ensure that it decreases.
 </Aside>
 
+## OAuth authentication
+
+Every `auth` option can be set with an environment variable named `REPLICATOR_<SIDE>_AUTH_<OPTION>`. For example, to authenticate the sink with OAuth client credentials while the reader keeps using basic credentials from its connection string, add the variables to the `replicator` service in `docker-compose.yml`:
+
+```yaml
+services:
+  replicator:
+    container_name: repl-replicator
+    image: eventstore/replicator:latest
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./replicator.yml:/app/config/appsettings.yaml
+      - ./transform.js:/app/transform.js
+      - ./client-secret.txt:/run/secrets/replicator_client_secret
+    environment:
+      REPLICATOR_SINK_AUTH_TYPE: oauthClientCredentials
+      REPLICATOR_SINK_AUTH_TOKENENDPOINT: https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token
+      REPLICATOR_SINK_AUTH_CLIENTID: <replicator-app-client-id>
+      REPLICATOR_SINK_AUTH_CLIENTSECRETFILE: /run/secrets/replicator_client_secret
+      REPLICATOR_SINK_AUTH_SCOPE: api://kurrentdb/.default
+```
+
+Replicator prints the environment variables it loads at startup, with connection strings, all `auth` values except `type`, and any value containing credentials (a URI with user info such as `mongodb://user:pass@host`, or `DefaultUserCredentials=`) masked as `***`. See [Authentication](../authentication/) for every option.
+
 

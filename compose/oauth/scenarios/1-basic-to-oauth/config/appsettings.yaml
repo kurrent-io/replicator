@@ -1,0 +1,18 @@
+# Scenario 1: basic-auth source -> OAuth sink (client credentials, secret file)
+replicator:
+  reader:
+    protocol: grpc
+    connectionString: "esdb://admin:changeit@localhost:2113?tls=true&tlsCaFile=../../certs/ca/ca.crt"
+  sink:
+    protocol: grpc
+    connectionString: "esdb://localhost:2114?tls=true&tlsCaFile=../../certs/ca/ca.crt"
+    auth:
+      type: oauthClientCredentials
+      tokenEndpoint: http://localhost:5080/connect/token
+      clientId: replicator
+      clientSecretFile: ../../secrets/replicator-client-secret
+      scope: streams
+  scavenge: true
+  checkpoint:
+    type: file
+    path: ./checkpoint

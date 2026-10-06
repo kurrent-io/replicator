@@ -22,11 +22,25 @@ spec:
         app: {{ template "replicator.name" . }}
         release: {{ .Release.Name }}
         tier: web
+{{- with .Values.podLabels }}
+{{ toYaml . | indent 8 }}
+{{- end }}
     spec:
+{{- with .Values.serviceAccountName }}
+      serviceAccountName: {{ . }}
+{{- end }}
       containers:
       - name: {{ .Chart.Name }}
         image: {{ template "replicator.image" . }}
         imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+{{- with .Values.extraEnv }}
+        env:
+{{ toYaml . | indent 10 }}
+{{- end }}
+{{- with .Values.extraEnvFrom }}
+        envFrom:
+{{ toYaml . | indent 10 }}
+{{- end }}
         livenessProbe:
           httpGet:
             path: /health
@@ -60,6 +74,9 @@ spec:
           mountPath: /app{{ include "replicator.sink.partitioner.filepath" . }}
           subPath: {{ include "replicator.sink.partitioner.filename" . }}
 {{- end }}
+{{- with .Values.extraVolumeMounts }}
+{{ toYaml . | indent 8 }}
+{{- end }}
         resources:
 {{ toYaml .Values.resources | indent 10 }}
       imagePullSecrets: []
@@ -86,3 +103,6 @@ spec:
       - name: {{ template "replicator.name" . }}
         persistentVolumeClaim:
           claimName: {{ template "replicator.fullname" . }}
+{{- with .Values.extraVolumes }}
+{{ toYaml . | indent 6 }}
+{{- end }}

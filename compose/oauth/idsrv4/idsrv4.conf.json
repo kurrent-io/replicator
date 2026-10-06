@@ -1,0 +1,43 @@
+{
+  "IdentityResources": [
+    { "Name": "openid", "DisplayName": "Your user identifier", "Required": true, "UserClaims": ["sub", "role"] },
+    { "Name": "profile", "DisplayName": "User profile", "UserClaims": ["name", "preferred_username"] }
+  ],
+  "ApiResources": [
+    { "Name": "kurrentdb", "Scopes": ["streams"] }
+  ],
+  "ApiScopes": [
+    { "Name": "streams", "UserClaims": ["http://schemas.microsoft.com/ws/2008/06/identity/claims/role", "role"] }
+  ],
+  "Clients": [
+    {
+      "ClientId": "kurrentdb-client",
+      "AllowedGrantTypes": ["password", "authorization_code"],
+      "ClientSecrets": [ { "Value": "K7gNU3sdo+OL0wNhqoVWhr3g6s1xYv72ol/pe/Unols=" } ],
+      "AllowedScopes": ["streams", "openid", "profile"],
+      "RedirectUris": [
+        "https://localhost:2114/signin-oidc", "https://localhost:2114/oauth/callback",
+        "https://localhost:2115/signin-oidc", "https://localhost:2115/oauth/callback"
+      ],
+      "AlwaysIncludeUserClaimsInIdToken": true,
+      "RequireConsent": false,
+      "AlwaysSendClientClaims": true,
+      "AllowOfflineAccess": true,
+      "RequireClientSecret": false,
+      "AllowAccessTokensViaBrowser": true
+    },
+    {
+      "ClientId": "replicator",
+      "AllowedGrantTypes": ["client_credentials"],
+      "ClientSecrets": [ { "Value": "KAt78nlfli+lNvMiwB6+C9QvQTpwYPuQ4luobTdP+2M=" } ],
+      "AllowedScopes": ["streams"],
+      "Claims": [
+        { "Type": "role", "Value": "$admins" },
+        { "Type": "http://schemas.microsoft.com/ws/2008/06/identity/claims/role", "Value": "$admins" }
+      ],
+      "ClientClaimsPrefix": "",
+      "AlwaysSendClientClaims": true,
+      "AccessTokenLifetime": 300
+    }
+  ]
+}

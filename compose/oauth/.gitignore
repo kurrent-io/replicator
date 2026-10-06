@@ -1,0 +1,5 @@
+.env
+certs/
+tokens/
+scenarios/*/checkpoint
+scenarios/*/*.log

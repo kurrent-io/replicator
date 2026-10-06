@@ -1,12 +1,15 @@
 // ReSharper disable UnusedAutoPropertyAccessor.Global
 
 #nullable disable
+using Kurrent.Replicator.KurrentDb.Auth;
+
 namespace replicator.Settings;
 
 public record EsdbSettings {
-    public string ConnectionString { get; init; }
-    public string Protocol         { get; init; }
-    public int    PageSize         { get; init; } = 1024;
+    public string           ConnectionString { get; init; }
+    public string           Protocol         { get; init; }
+    public int              PageSize         { get; init; } = 1024;
+    public GrpcAuthSettings Auth             { get; init; } = new();
 }
 
 public record CheckpointSeeder {

@@ -1,0 +1,11 @@
+[
+  {
+    "subjectId": "1",
+    "username": "admin",
+    "password": "password",
+    "claims": [
+      { "type": "role", "value": "$admins" },
+      { "type": "role", "value": "$ops" }
+    ]
+  }
+]

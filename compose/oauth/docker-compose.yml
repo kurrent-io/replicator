@@ -1,0 +1,70 @@
+# Local end-to-end test bed for Replicator OAuth authentication.
+# See README.md in this folder. Replicator itself runs on the host from this branch.
+
+x-kurrentdb-env: &kurrentdb-env
+  KURRENTDB_CLUSTER_SIZE: 1
+  KURRENTDB_MEM_DB: "true"
+  KURRENTDB_RUN_PROJECTIONS: None
+  KURRENTDB_NODE_IP: 0.0.0.0
+  KURRENTDB_REPLICATION_IP: 0.0.0.0
+  KURRENTDB_ENABLE_ATOM_PUB_OVER_HTTP: "true"
+  KURRENTDB_CERTIFICATE_FILE: /certs/node/node.crt
+  KURRENTDB_CERTIFICATE_PRIVATE_KEY_FILE: /certs/node/node.key
+  KURRENTDB_TRUSTED_ROOT_CERTIFICATES_PATH: /certs/ca
+  KURRENTDB_CERTIFICATE_RESERVED_NODE_COMMON_NAME: kurrentdb-node
+
+x-oauth-env: &oauth-env
+  <<: *kurrentdb-env
+  KURRENTDB_CONFIG: /etc/kurrentdb/oauth.conf
+  KURRENTDB__LICENSING__LICENSE_KEY: ${KURRENTDB_LICENSE_KEY:-}
+
+services:
+  # IdentityServer 4 test IdP, as used by KurrentDB's own OAuth tests and docs.
+  # HTTP on host port 5080 (Replicator only allows plain http for loopback token endpoints),
+  # HTTPS on 5001 for KurrentDB's discovery/key fetches inside the network.
+  idsrv4:
+    image: ghcr.io/kurrent-io/idsrv4/idsrv4:latest
+    environment:
+      DOTNET_URLS: http://+:5000;https://+:5001
+    ports:
+      - "5080:5000"
+      - "5001:5001"
+    volumes:
+      - ./idsrv4/users.conf.json:/etc/idsrv4/users.conf:ro
+      - ./idsrv4/idsrv4.conf.json:/etc/idsrv4/idsrv4.conf:ro
+
+  # Basic auth (admin:changeit), no license needed.
+  kurrentdb-basic:
+    image: ${KURRENTDB_IMAGE:-kurrentplatform/kurrentdb:26.1.1-experimental-arm64-10.0-noble}
+    environment:
+      <<: *kurrentdb-env
+    ports:
+      - "2113:2113"
+    volumes:
+      - ./certs:/certs:ro
+
+  # OAuth-only node #1.
+  kurrentdb-oauth:
+    image: ${KURRENTDB_IMAGE:-kurrentplatform/kurrentdb:26.1.1-experimental-arm64-10.0-noble}
+    environment:
+      <<: *oauth-env
+    ports:
+      - "2114:2113"
+    volumes:
+      - ./certs:/certs:ro
+      - ./kurrentdb/oauth.conf:/etc/kurrentdb/oauth.conf:ro
+    depends_on:
+      - idsrv4
+
+  # OAuth-only node #2 (target for the OAuth-to-OAuth scenario).
+  kurrentdb-oauth2:
+    image: ${KURRENTDB_IMAGE:-kurrentplatform/kurrentdb:26.1.1-experimental-arm64-10.0-noble}
+    environment:
+      <<: *oauth-env
+    ports:
+      - "2115:2113"
+    volumes:
+      - ./certs:/certs:ro
+      - ./kurrentdb/oauth.conf:/etc/kurrentdb/oauth.conf:ro
+    depends_on:
+      - idsrv4

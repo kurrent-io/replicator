@@ -1,0 +1,22 @@
+# Scenario 3: OAuth source (client credentials) -> OAuth sink (token file kept fresh by scripts/refresh-token-file.sh)
+replicator:
+  reader:
+    protocol: grpc
+    connectionString: "esdb://localhost:2114?tls=true&tlsCaFile=../../certs/ca/ca.crt"
+    auth:
+      type: oauthClientCredentials
+      tokenEndpoint: http://localhost:5080/connect/token
+      clientId: replicator
+      clientSecretFile: ../../secrets/replicator-client-secret
+      scope: streams
+  sink:
+    protocol: grpc
+    connectionString: "esdb://localhost:2115?tls=true&tlsCaFile=../../certs/ca/ca.crt"
+    auth:
+      type: oauthTokenFile
+      tokenFile: ../../tokens/sink.token
+      tokenFileReloadSeconds: 30
+  scavenge: true
+  checkpoint:
+    type: file
+    path: ./checkpoint
