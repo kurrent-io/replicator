@@ -101,7 +101,7 @@ Read also about [monitoring](#monitoring) the replicator process in Kubernetes.
 
 ### OAuth authentication
 
-OAuth requires a Replicator release that includes OAuth support, which is newer than the chart's default image tag (`0.4.7`). Set `image.tag` to such a release.
+OAuth requires Replicator 0.6.0 or later, which is the chart's default image tag from chart version 0.6.0.
 
 When a cluster uses OAuth (for example with Microsoft Entra ID), configure that side's `auth` section and inject the secret from a Kubernetes Secret. Never put `clientSecret` in `values.yml`: the `replicator` block is rendered into a ConfigMap.
 
