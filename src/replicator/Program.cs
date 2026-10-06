@@ -38,7 +38,8 @@ var restartOnFailure = app.Services.GetService<ReplicatorOptions>()?.RestartOnFa
 try {
     app.Run();
 
-    return 0;
+    // Non-zero when the replicator failed and stopped the host (see ReplicatorService)
+    return Environment.ExitCode;
 } catch (Exception ex) {
     Log.Fatal(ex, "Host terminated unexpectedly");
 

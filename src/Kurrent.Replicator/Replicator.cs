@@ -12,6 +12,8 @@ namespace Kurrent.Replicator;
 public static class Replicator {
     static readonly ILog Log = LogProvider.GetCurrentClassLogger();
 
+    static readonly TimeSpan WriterStopGracePeriod = TimeSpan.FromSeconds(5);
+
     public static async Task Replicate(
             IEventReader           reader,
             IEventWriter           writer,
@@ -60,6 +62,22 @@ public static class Replicator {
             ReplicationMetrics.SinkChannelSize,
             writerCts.Token
         );
+        // The writer only ends on its own when a write failed beyond retry (or was cancelled by shutdown). Nothing read
+        // from now on can be written, so stop the reader instead of re-reading the same events forever.
+        var writerDied = false;
+
+        _ = writerTask.ContinueWith(
+            _ => {
+                if (writerCts.IsCancellationRequested) return;
+
+                writerDied = true;
+                cts.Cancel();
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default
+        );
+
         var reporter = Task.Run(Report, stoppingToken);
 
         await writer.Start();
@@ -114,7 +132,7 @@ public static class Replicator {
 
                 if (replicatorOptions.RestartDelay != TimeSpan.Zero) {
                     try {
-                        await Task.Delay(replicatorOptions.RestartDelay, stoppingToken);
+                        await Task.Delay(replicatorOptions.RestartDelay, linkedCts.Token);
                     } catch (OperationCanceledException) {
                         // stopping now
                         break;
@@ -131,10 +149,29 @@ public static class Replicator {
             await prepareTask.ConfigureAwait(false);
             await writerTask.ConfigureAwait(false);
         } catch (OperationCanceledException) { } catch (Exception e) {
-            Log.Error(e, "Error stopping pending tasks");
+            if (!writerDied) Log.Error(e, "Error stopping pending tasks");
         }
 
         await Flush().ConfigureAwait(false);
+
+        if (writerDied) {
+            // A writer cancelled by shutdown (ApplicationStopping, e.g. while it waited out a sink outage) ends just
+            // before the stopping token fires: give the host a moment before calling it a failure.
+            if (!writerTask.IsFaulted) {
+                try {
+                    await Task.Delay(WriterStopGracePeriod, stoppingToken).ConfigureAwait(false);
+                } catch (OperationCanceledException) { }
+            }
+
+            if (!stoppingToken.IsCancellationRequested) {
+                var error = writerTask.Exception?.GetBaseException();
+
+                if (error != null) Log.Error(error, "Writer stopped unexpectedly; replication cannot continue in this process");
+                else Log.Error("Writer stopped unexpectedly; replication cannot continue in this process");
+
+                throw new ReplicatorFailedException("The writer stopped unexpectedly; replication cannot continue in this process", error);
+            }
+        }
 
         Log.Info("Replicator stopped");
 
