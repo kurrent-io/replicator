@@ -22,6 +22,8 @@ public class ReplicatorWriterFailureTests {
     sealed class FakeReader(int count, bool blockAfter) : IEventReader {
         public int Cycles;
 
+        public readonly ConcurrentQueue<CancellationToken> PositionQueryTokens = new();
+
         public string Protocol => "fake";
 
         public async Task ReadEvents(LogPosition fromLogPosition, Func<BaseOriginalEvent, ValueTask> next, CancellationToken cancellationToken) {
@@ -32,7 +34,11 @@ public class ReplicatorWriterFailureTests {
             if (blockAfter) await Task.Delay(Timeout.Infinite, cancellationToken);
         }
 
-        public Task<long?> GetLastPosition(CancellationToken cancellationToken) => Task.FromResult<long?>(count);
+        public Task<long?> GetLastPosition(CancellationToken cancellationToken) {
+            PositionQueryTokens.Enqueue(cancellationToken);
+
+            return Task.FromResult<long?>(count);
+        }
 
         public ValueTask<bool> Filter(BaseOriginalEvent originalEvent) => ValueTask.FromResult(true);
     }
@@ -84,6 +90,32 @@ public class ReplicatorWriterFailureTests {
             await Assert.That(async () => await run.WaitAsync(TimeSpan.FromSeconds(20))).Throws<ReplicatorFailedException>();
             await Assert.That(store.Stored).IsEmpty();
             await Assert.That(Volatile.Read(ref reader.Cycles)).IsEqualTo(1);
+        } finally {
+            await stopping.CancelAsync();
+        }
+    }
+
+    [Test]
+    public async Task Failed_replication_stops_its_background_work_before_returning() {
+        using var stopping = new CancellationTokenSource();
+        var       reader   = new FakeReader(5, blockAfter: true);
+
+        var run = Replicator.Replicate(
+            reader,
+            new BrokenWriter(),
+            new SinkPipeOptions(1, 10),
+            new PreparePipelineOptions(null, null, 1, 10),
+            new NoCheckpointSeeder(),
+            new MemoryCheckpointStore(),
+            new ReplicatorOptions(true, true, TimeSpan.Zero, TimeSpan.FromSeconds(1)),
+            stopping.Token
+        );
+
+        try {
+            await Assert.That(async () => await run.WaitAsync(TimeSpan.FromSeconds(20))).Throws<ReplicatorFailedException>();
+            // the metrics reporter was stopped inside Replicate, not left running until the host stops
+            await Assert.That(reader.PositionQueryTokens).IsNotEmpty();
+            await Assert.That(reader.PositionQueryTokens.All(t => t.IsCancellationRequested)).IsTrue();
         } finally {
             await stopping.CancelAsync();
         }

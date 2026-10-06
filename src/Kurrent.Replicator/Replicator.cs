@@ -78,13 +78,21 @@ public static class Replicator {
             TaskScheduler.Default
         );
 
-        var reporter = Task.Run(Report, stoppingToken);
+        // Own token so the reporter also stops (and is awaited) when replication ends without a shutdown, e.g. on a
+        // writer failure: nothing started by Replicate may outlive it.
+        using var reporterCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        var       reporter    = Task.Run(() => Report(reporterCts.Token), CancellationToken.None);
 
-        await writer.Start();
+        try {
+            await writer.Start();
+            await checkpointSeeder.Seed(stoppingToken);
+        } catch {
+            await StopReporter().ConfigureAwait(false);
+
+            throw;
+        }
 
         var stopping = false;
-
-        await checkpointSeeder.Seed(stoppingToken);
 
         try {
             while (!stopping) {
@@ -154,6 +162,8 @@ public static class Replicator {
 
         await Flush().ConfigureAwait(false);
 
+        await StopReporter().ConfigureAwait(false);
+
         if (writerDied) {
             // A writer cancelled by shutdown (ApplicationStopping, e.g. while it waited out a sink outage) ends just
             // before the stopping token fires: give the host a moment before calling it a failure.
@@ -183,6 +193,11 @@ public static class Replicator {
             writerCts.Cancel();
         }
 
+        async Task StopReporter() {
+            await reporterCts.CancelAsync().ConfigureAwait(false);
+            await reporter.ConfigureAwait(false);
+        }
+
         async Task Flush() {
             Log.Info("Storing the last known checkpoint");
             await checkpointStore.Flush(CancellationToken.None).ConfigureAwait(false);
@@ -197,17 +212,17 @@ public static class Replicator {
             )
             => Task.Run(() => channel.Shovel(send, () => Log.Info($"{name} started"), () => Log.Info($"{name} stopped"), size, token), token);
 
-        async Task Report() {
+        async Task Report(CancellationToken token) {
             DateTimeOffset? lastWarning = null;
 
-            while (!stoppingToken.IsCancellationRequested) {
+            while (!token.IsCancellationRequested) {
                 try {
-                    var position = await reader.GetLastPosition(stoppingToken).ConfigureAwait(false);
+                    var position = await reader.GetLastPosition(token).ConfigureAwait(false);
 
                     if (position.HasValue) {
                         ReplicationMetrics.LastSourcePosition.Set(position.Value);
                     }
-                } catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
+                } catch (OperationCanceledException) when (token.IsCancellationRequested) {
                     break;
                 } catch (Exception e) {
                     var now = DateTimeOffset.UtcNow;
@@ -219,7 +234,7 @@ public static class Replicator {
                 }
 
                 try {
-                    await Task.Delay(replicatorOptions.ReportMetricsFrequency, stoppingToken).ConfigureAwait(false);
+                    await Task.Delay(replicatorOptions.ReportMetricsFrequency, token).ConfigureAwait(false);
                 } catch (OperationCanceledException) {
                     break;
                 }
