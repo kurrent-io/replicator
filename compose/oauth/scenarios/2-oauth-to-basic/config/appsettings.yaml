@@ -1,0 +1,19 @@
+# Scenario 2: OAuth source (client credentials) -> basic-auth sink
+replicator:
+  reader:
+    protocol: grpc
+    connectionString: "esdb://localhost:2114?tls=true&tlsCaFile=../../certs/ca/ca.crt"
+    auth:
+      type: oauthClientCredentials
+      tokenEndpoint: http://localhost:5080/connect/token
+      clientId: replicator
+      clientSecretFile: ../../secrets/replicator-client-secret
+      scope: streams
+  sink:
+    protocol: grpc
+    connectionString: "esdb://admin:changeit@localhost:2113?tls=true&tlsCaFile=../../certs/ca/ca.crt"
+  # scavenge off: KurrentDB 26 system streams trip a pre-existing scavenge-filter bug (StreamNotFound on $connectors-mngt/state-projection), unrelated to OAuth
+  scavenge: false
+  checkpoint:
+    type: file
+    path: ./checkpoint
