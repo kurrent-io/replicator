@@ -102,6 +102,9 @@ class StreamMetaCache(bool failClosedOnAuthErrors = false) {
     static bool IsStreamDeleted(StreamMetadata meta) => meta.TruncateBefore == long.MaxValue;
 }
 
-record StreamSize(long LastEventNumber);
+record StreamSize(long LastEventNumber) {
+    /// <summary>A stream with no events (not found, or metadata only): no event number is over its max count.</summary>
+    public static readonly StreamSize Empty = new(-1);
+}
 
 record StreamMeta(bool IsDeleted, TimeSpan? MaxAge, long? MaxCount, long Version);

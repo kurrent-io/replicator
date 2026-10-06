@@ -12,8 +12,7 @@ replicator:
       clientId: replicator
       clientSecretFile: ../../secrets/replicator-client-secret
       scope: streams
-  # scavenge off: KurrentDB 26 system streams trip a pre-existing scavenge-filter bug (StreamNotFound on $connectors-mngt/state-projection), unrelated to OAuth
-  scavenge: false
+  scavenge: true
   checkpoint:
     type: file
     path: ./checkpoint

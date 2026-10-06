@@ -102,7 +102,6 @@ Expected: rate-limited warnings, replication pauses, then resumes on its own wit
 
 ## Known issues
 
-- Scenarios run with `scavenge: false`. With scavenge on, a KurrentDB 26 system stream trips a pre-existing scavenge-filter bug, tracked as Linear DEV-1903.
 - Recreating `idsrv4` generates a new signing key. Restart the OAuth nodes afterwards so they fetch it; otherwise every token is rejected as Unauthenticated.
 
 ## Teardown

@@ -54,6 +54,18 @@ public sealed class FakeKurrentDbHandler : HttpMessageHandler {
     /// <summary>AppendResp { success { current_revision = 0, position { commit = 1, prepare = 1 } } }</summary>
     public static HttpResponseMessage AppendSuccess() => Unary([0x0A, 0x08, 0x08, 0x00, 0x1A, 0x04, 0x08, 0x01, 0x10, 0x01]);
 
+    /// <summary>ReadResp { stream_not_found { stream_identifier { stream_name = <paramref name="stream"/> } } }, as KurrentDB answers a stream read for a stream with no events.</summary>
+    public static HttpResponseMessage ReadStreamNotFound(string stream) {
+        var name       = System.Text.Encoding.UTF8.GetBytes(stream);
+        byte[] id      = [0x1A, (byte)name.Length, ..name];
+        byte[] missing = [0x0A, (byte)id.Length, ..id];
+
+        return Unary([0x22, (byte)missing.Length, ..missing]);
+    }
+
+    /// <summary>A successful streaming read that returns no messages at all.</summary>
+    public static HttpResponseMessage EmptyRead() => TrailersOnly(StatusCode.OK);
+
     static HttpResponseMessage Unary(byte[] message) {
         var frame = new byte[5 + message.Length];
         BinaryPrimitives.WriteUInt32BigEndian(frame.AsSpan(1), (uint)message.Length);
